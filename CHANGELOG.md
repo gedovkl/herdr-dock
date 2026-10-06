@@ -3,6 +3,23 @@
 What was built, in order, and what was learned along the way. Architecture and rationale live in
 [DESIGN.md](DESIGN.md); setup is in [README.md](README.md).
 
+## Third code review fixes
+
+All three findings were real. Each fix has a test that failed first:
+
+1. **Lock monitor gave up after 3 `hyprctl` failures.** Locked at that moment, the dock stayed
+   dark until a restart; starting before Hyprland was reachable, lock blanking stayed off for
+   the session. It now retries forever with backoff (up to 30 s) and **keeps the last known
+   state**. The suggested "report unlocked before giving up" would have lit the dock and
+   re-enabled presses on a locked machine. One log line when failing, one when it recovers.
+2. **No logind delay lock for sleep.** logind could suspend before the dock went dark. The sleep
+   monitor now holds `systemd-inhibit --what=sleep --mode=delay` while awake (Omarchy does the
+   same for its lock). On `PrepareForSleep(true)` it waits for the blank to be *applied* (at
+   most 3 s, under logind's 5 s default) and only then releases the lock. It takes the lock
+   again on resume. Without `systemd-inhibit` it still blanks, and logs a warning once.
+3. **Weather code 1 ("mainly clear") at night showed a cloud.** It now shows the moon, like
+   the sun by day.
+
 ## Dock off on lock and sleep
 
 - `[linux] blank_when_locked` / `blank_on_sleep` (both default `true`): brightness 0 plus cleared

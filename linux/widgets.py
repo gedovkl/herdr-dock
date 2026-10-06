@@ -50,11 +50,9 @@ class WeatherReading:
 
 def weather_condition(code: int, is_day: bool = True) -> str:
     """WMO weather code → a theme.WEATHER_SYMBOL condition name."""
-    if code == 0:
+    if code in (0, 1):  # clear, mainly clear
         return "sun" if is_day else "moon"
-    if code in (1, 2):
-        return "sun" if is_day and code == 1 else "cloud"
-    if code == 3:
+    if code in (2, 3):  # partly cloudy, overcast
         return "cloud"
     if code in (45, 48):
         return "fog"

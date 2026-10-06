@@ -289,9 +289,10 @@ async def test_lock_and_sleep_turn_the_dock_off_and_on(built: tuple[Daemon, Fake
     stop = asyncio.Event()
     task = asyncio.create_task(daemon.run(stop))
     daemon._on_locked(True)
-    daemon._on_asleep(True)
+    await daemon._on_asleep(True)  # returns only once the blank was applied
+    assert blanks == [True, True]
     daemon._on_locked(False)  # still asleep → stays off
-    daemon._on_asleep(False)  # awake and unlocked → on
+    await daemon._on_asleep(False)  # awake and unlocked → on
     await _until(lambda: len(blanks) == 4)
     stop.set()
     await task

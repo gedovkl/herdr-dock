@@ -24,7 +24,8 @@ def test_clock_formats_time_and_date() -> None:
         (0, True, "sun"),
         (0, False, "moon"),
         (1, True, "sun"),
-        (1, False, "cloud"),
+        (1, False, "moon"),  # "mainly clear" at night
+        (2, False, "cloud"),
         (2, True, "cloud"),
         (3, True, "cloud"),
         (45, True, "fog"),

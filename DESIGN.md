@@ -462,9 +462,14 @@ flowchart LR
 (`blank_when_locked`) or the machine sleeps (`blank_on_sleep`).
 - **Lock:** Hyprland exposes no lock event, but an active ext-session-lock adds `LOCK` to every
   monitor's `solitaryBlockedBy` (the same signal Omarchy's `omarchy-hyprland-session-locked`
-  uses). It's polled every `lock_poll_seconds`, and it works with any ext-session-lock locker.
+  uses). It's polled every `lock_poll_seconds`, and it works with any ext-session-lock locker. While
+  `hyprctl` fails, the last known state is kept and polling backs off up to 30 s. It never
+  guesses "unlocked".
 - **Sleep:** logind's `PrepareForSleep(true/false)`, streamed from
-  `dbus-monitor --system`, so the dock goes dark the moment suspend starts. Omarchy also locks
+  `dbus-monitor --system`. While awake the daemon holds a logind **delay inhibitor**
+  (`systemd-inhibit --what=sleep --mode=delay … sleep infinity`). On `PrepareForSleep(true)` it
+  waits until the dock is actually dark (at most 3 s), then releases the inhibitor, and it takes
+  it again on resume. `systemd-inhibit --list` shows it as `herdr-dock`. Omarchy also locks
   before suspending, so both signals usually agree.
 - **Off** means `set_brightness(0)` plus cleared keys. The off state is remembered across
   reconnects (a resume often re-enumerates USB). While off, presses are ignored, home ticks are

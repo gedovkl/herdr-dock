@@ -238,7 +238,7 @@ systemctl --user restart herdr-dock
 | `tools/probe_m18.py` or the hardware tests can't open the device | Only one process can drive the M18. Stop the daemon first: `systemctl --user stop herdr-dock` |
 | An `app = …` home key does nothing | `uwsm-app` couldn't resolve the name. Use the desktop ID with `.desktop` (see step 6), and check `journalctl --user -u herdr-dock` |
 | Dock was unplugged | Nothing to do: plug it back in and it redraws within about 2 s |
-| Dock doesn't turn off when locked | Lock detection uses Hyprland's session-lock state (`hyprctl -j monitors` → `solitaryBlockedBy` contains `LOCK`). It works with omarchy-shell, hyprlock and other ext-session-lock lockers. Without Hyprland it switches itself off, logging `lock blanking is off`. Sleep detection needs `dbus-monitor` |
+| Dock doesn't turn off when locked | Lock detection uses Hyprland's session-lock state (`hyprctl -j monitors` → `solitaryBlockedBy` contains `LOCK`). It works with omarchy-shell, hyprlock and other ext-session-lock lockers. Without Hyprland it switches itself off, logging `lock blanking is off`. Sleep detection needs `dbus-monitor`, and `systemd-inhibit` to delay the suspend until the dock is dark (`systemd-inhibit --list` shows `herdr-dock`) |
 | Weather key shows `--` | No network, or the coordinates are wrong. The log says `weather update failed …` once. It retries every minute |
 | Service doesn't start at login | `systemctl --user status herdr-dock`. It needs `graphical-session.target`, which uwsm and most Wayland session managers provide |
 

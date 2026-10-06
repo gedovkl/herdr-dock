@@ -49,10 +49,11 @@ _TICK = _Tick()
 
 
 class _Blank:
-    """Queue item: turn the dock off (True) or on (False)."""
+    """Queue item: turn the dock off (True) or on (False); `done` resolves once applied."""
 
-    def __init__(self, blank: bool) -> None:
+    def __init__(self, blank: bool, done: asyncio.Future[None] | None = None) -> None:
         self.blank = blank
+        self.done = done
 
     def __repr__(self) -> str:
         return f"_Blank({self.blank})"
@@ -134,15 +135,18 @@ class Daemon:
         self._locked = locked
         self._queue_blank()
 
-    def _on_asleep(self, asleep: bool) -> None:
+    async def _on_asleep(self, asleep: bool) -> None:
+        """Returns once the dock state is applied, so the sleep monitor can release suspend."""
         self._asleep = asleep
-        self._queue_blank()
+        done: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+        self._queue_blank(done)
+        await done
 
-    def _queue_blank(self) -> None:
+    def _queue_blank(self, done: asyncio.Future[None] | None = None) -> None:
         blank = (self._locked and self._blank_when_locked) or (
             self._asleep and self._blank_on_sleep
         )
-        self._inputs.put_nowait(_Blank(blank))
+        self._inputs.put_nowait(_Blank(blank, done))
 
     def on_input(self, event: DeviceInput) -> None:
         """Device callback (already on the event loop)."""
@@ -182,7 +186,11 @@ class Daemon:
                 elif isinstance(event, _Tick):
                     await self._controller.tick()
                 elif isinstance(event, _Blank):
-                    await self._controller.set_blank(event.blank)
+                    try:
+                        await self._controller.set_blank(event.blank)
+                    finally:
+                        if event.done is not None and not event.done.done():
+                            event.done.set_result(None)  # sleep may proceed now
                 else:
                     await self._controller.handle(event)
             except Exception:
