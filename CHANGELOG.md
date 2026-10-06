@@ -3,6 +3,20 @@
 What was built, in order, and what was learned along the way. Architecture and rationale live in
 [DESIGN.md](DESIGN.md); setup is in [README.md](README.md).
 
+## macOS spike (VSD Craft 3.10.205)
+
+A throwaway plugin on the real M18 settled the macOS open items (details in DESIGN.md "Open items"):
+
+- `CodePathMac` launches a script or executable with `-port -pluginUUID -registerEvent -info`.
+  Plugins get a minimal `PATH`, so the plugin must find `herdr` itself.
+- Key events carry `coordinates {column, row}`: key index = `row * 5 + column`.
+- Folders get a fixed back key on key 1: no Exit action. Folder enter/leave arrives as bursts of
+  `willDisappear` then `willAppear`, so the session stop needs a short grace delay.
+- 64 × 64 PNG `setImage` displays sharp.
+- `tests/unit/linux/test_hyprland.py`: the real-`/proc` test is skipped where there is no `/proc`
+  (macOS), so `scripts/check.sh` passes on the Mac.
+- On this Mac pip points at the Axon Nexus mirror: connect to the VPN before `scripts/setup.sh`.
+
 ## Pomodoro and timer keys
 
 - `widget = "pomodoro"`: `work_minutes` / `rest_minutes` (25/5) and `notify` in the config.

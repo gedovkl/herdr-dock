@@ -179,9 +179,9 @@ profiles** (open request:
 So on the Mac:
 
 - **Herdr button** = a normal **folder** you create in the StreamDock app.
-- **Exit button** = the folder's back key on key 1. Inside the folder you place the plugin's
-  **"Herdr Exit"** action on key 1, configured as the folder's back key if the app allows
-  that. If it doesn't, the app's built-in folder back key goes on key 1 (see Open items).
+- **Exit button** = the app's own folder back key. Verified: the app puts a **fixed** back key on
+  key 1 of every folder, and a plugin can't replace or move it. So there is no Exit action, and the
+  `ExitFace` status summary isn't shown on macOS (`KeyLayout(exit_key=True)`: key 1 is the app's).
 - Keys 2–15 inside the folder hold **"Herdr Agent Slot"** actions, and key 15 can hold the
   **"Herdr Pager"** action instead.
 - Lifecycle comes from visibility: the first `willAppear` of any plugin action calls
@@ -508,15 +508,14 @@ other value is a shell command template.
 ## macOS front end: `com.herdr.dock.sdPlugin`
 
 - Built on the official Python plugin SDK (`SDPythonSDK`: WebSocket client, Action
-  classes, PyInstaller spec). It is packaged as a single executable named in `CodePath`,
-  with `herdr_core` bundled in.
+  classes, PyInstaller spec). It is packaged as a single executable named in the manifest's
+  `CodePathMac` (the app also reads `CodePathWin`), with `herdr_core` bundled in.
 - Manifest actions:
 
   | UUID | Name | Behaviour |
   |------|------|-----------|
   | `com.herdr.dock.slot`  | Herdr Agent Slot | Shows agent N of the current page; press → focus + raise |
   | `com.herdr.dock.pager` | Herdr Pager      | `1/2 ▶`, cycles pages |
-  | `com.herdr.dock.exit`  | Herdr Exit       | Exit key face (summary); see Open items for back navigation |
 
 - Events used: `willAppear`, `willDisappear`, `keyUp`, `didReceiveSettings`. Commands used:
   `setImage` (base64 PNG) and `setTitle` (empty, because the image already has the text).
@@ -633,14 +632,25 @@ After milestone 4 (all on Linux, all verified on the M18 unless noted):
   "system resumed"). The delay inhibitor is held (`systemd-inhibit --list` shows `herdr-dock`).
 - ✅ **M18 hardware**: `5548:1000`, 3 extra buttons (`0x25/0x30/0x31`). Key mapping verified.
   See "M18 facts" above.
-- **macOS Exit key**: check whether the StreamDock app lets a folder's back key be placed
-  on key 1 or swapped for a plugin action. If it can't, Exit is the app's own folder back
-  key and the plugin's Exit action becomes an optional status-summary key. A plugin action
-  can't trigger "go back" itself until the SDK adds page switching (#33).
-- **macOS slot mapping**: confirm that `willAppear` includes `coordinates` for the M18. If it
-  doesn't, use the Property Inspector "slot #" setting.
-- **macOS plugin directory**: confirm the path the StreamDock app loads `.sdPlugin` folders
-  from.
+- ✅ **macOS Exit key** (spike, VSD Craft 3.10.205): every folder gets a **fixed** back key on
+  key 1 that a plugin can't replace. The plugin has no Exit action. A plugin still can't go
+  back itself until the SDK adds page switching (#33).
+- ✅ **macOS slot mapping**: `willAppear`/`willDisappear`/`keyDown`/`keyUp` carry
+  `payload.coordinates {column, row}` (0-based, top-left origin). The M18 is 5 × 3, so
+  key index = `row * 5 + column`. No "slot #" setting is needed.
+- ✅ **macOS plugin directory**: `~/Library/Application Support/HotSpot/StreamDock/plugins/`.
+- ✅ **macOS launch**: `CodePathMac` can be a script or executable. The app runs it with
+  `-port -pluginUUID -registerEvent -info`, cwd = the plugin folder, as the user, with
+  `PATH=/usr/bin:/bin:/usr/sbin:/sbin;/Applications/VSD Craft.app/Contents/MacOS`. So the plugin
+  must search for `herdr` itself (`~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`).
+- ✅ **macOS lifecycle**: opening a folder sends `willDisappear` for the page's keys and then
+  `willAppear` for the folder's keys (new contexts). Leaving does the reverse. Dragging a key
+  keeps its context and sends `willDisappear` + `willAppear` with the new coordinates. A page
+  switch can drop the visible count to 0 for an instant, so the plugin waits about 0.3 s before
+  stopping the session.
+- ✅ **macOS images**: 64 × 64 PNG data URLs through `setImage` display sharp.
+- The `info` argument lists several device types and every event carries a `device` id. The
+  plugin only drives the 5 × 3 device.
 - ✅ **Animation rate on Linux**: about 1 ms per key, so not a concern.
 - **Animation rate on macOS**: measure `setImage` through the StreamDock app, and check whether it
   accepts an animated GIF data URL and plays it.

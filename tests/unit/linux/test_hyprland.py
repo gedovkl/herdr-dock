@@ -75,6 +75,7 @@ def test_read_processes(tmp_path: Path) -> None:
     }
 
 
+@pytest.mark.skipif(not Path("/proc/self").exists(), reason="needs Linux /proc")
 def test_read_real_proc_finds_this_process() -> None:
     import os
 
