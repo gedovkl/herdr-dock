@@ -13,8 +13,8 @@ What was built, in order, and what was learned along the way. Architecture and r
   keep the last reading, log once, and retry after 60 s.
 - A one-second tick, through the input queue, redraws only home keys whose text changed. It
   costs about 0.1 % of one core.
-- The author's config, mirrored in `config.example.toml`, gained a clock on key 5 and Nashua, NH
-  weather in °C on key 10.
+- The author's config, mirrored in `config.example.toml`, gained a clock and Nashua, NH weather (°C) on
+  the first two keys of the bottom row (keys 11 and 12).
 - Second code review: one finding, fixed. With a relative `--config` path, relative icon paths
   stayed relative and broke after the SDK's `chdir`. They are now always absolute.
 

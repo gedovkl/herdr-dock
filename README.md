@@ -136,13 +136,13 @@ Restart the daemon after changing the config (`systemctl --user restart herdr-do
 
 ```toml
 [[home]]
-key = 5
+key = 11
 widget = "clock"
 time_format = "%H:%M"      # strftime format; "%I:%M %p" for 12-hour, "%H:%M:%S" with seconds
 date_format = "%a %d %b"   # "" hides the date
 
 [[home]]
-key = 10
+key = 12
 widget = "weather"         # current conditions from Open-Meteo (free, no API key)
 place = "Nashua"           # label under the temperature
 latitude = 42.7654         # your location (find it at https://open-meteo.com or any map)
