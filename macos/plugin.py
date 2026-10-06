@@ -111,7 +111,9 @@ class HerdrPlugin:
             return None
         if not (0 <= column < COLUMNS and 0 <= row < ROWS):
             return None
-        key = row * COLUMNS + column
+        # The app numbers the M18's rows from the bottom: its folder back key (top-left) is stored
+        # at column 0, row 2. Key indexes count from the top-left like everywhere else here.
+        key = (ROWS - 1 - row) * COLUMNS + column
         if self._layout.is_exit(key):
             self._warn_once(
                 "back", "key 1 is the app's folder back key; the action is ignored there"

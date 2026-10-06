@@ -51,6 +51,9 @@ class HerdrSocketClient:
     async def focus_agent(self, pane_id: str) -> None:
         await self.request("agent.focus", {"target": pane_id})
 
+    async def focus_tab(self, tab_id: str) -> None:
+        await self.request("tab.focus", {"tab_id": tab_id})
+
     async def subscribe(self, status_pane_ids: Collection[str]) -> SocketEventStream:
         subscriptions: list[dict[str, str]] = [
             {"type": "pane.agent_status_changed", "pane_id": pane_id}

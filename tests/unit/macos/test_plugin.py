@@ -99,7 +99,7 @@ async def rig() -> Rig:
 
 
 async def test_appearing_attaches_the_key_redraws_and_starts_herdr(rig: Rig) -> None:
-    rig.send("willAppear", "c1", column=1, row=0)  # key index 1 = the first agent slot
+    rig.send("willAppear", "c1", column=1, row=2)  # top row, second column = the first agent slot
     await rig.settle()
     assert rig.surface.key_of("c1") == 1
     assert rig.presenter.invalidated == 1
@@ -107,16 +107,24 @@ async def test_appearing_attaches_the_key_redraws_and_starts_herdr(rig: Rig) -> 
     await rig.close()
 
 
-async def test_key_index_is_row_major(rig: Rig) -> None:
-    rig.send("willAppear", "c1", column=3, row=2)
-    assert rig.surface.key_of("c1") == 13
+async def test_the_apps_rows_count_from_the_bottom(rig: Rig) -> None:
+    """Verified on the M18: the folder's back key (top-left) is stored at column 0, row 2."""
+    for context, column, row, key in [
+        ("top-left", 0, 2, 0),
+        ("top-right", 4, 2, 4),
+        ("middle", 2, 1, 7),
+        ("bottom-left", 0, 0, 10),
+        ("bottom-right", 4, 0, 14),
+    ]:
+        rig.send("willAppear", context, column=column, row=row)
+        assert rig.surface.key_of(context) == (key if key else None), context
     await rig.close()
 
 
 async def test_disappearing_detaches_and_eventually_stops(rig: Rig) -> None:
-    rig.send("willAppear", "c1", column=1, row=0)
+    rig.send("willAppear", "c1", column=1, row=2)
     await rig.settle()
-    rig.send("willDisappear", "c1", column=1, row=0)
+    rig.send("willDisappear", "c1", column=1, row=2)
     await rig.settle()
     assert rig.surface.count == 0
     assert rig.calls == ["start", "stop"]
@@ -124,26 +132,26 @@ async def test_disappearing_detaches_and_eventually_stops(rig: Rig) -> None:
 
 
 async def test_a_dragged_key_moves(rig: Rig) -> None:
-    rig.send("willAppear", "c1", column=1, row=0)
-    rig.send("willAppear", "c1", column=2, row=0)
+    rig.send("willAppear", "c1", column=1, row=2)
+    rig.send("willAppear", "c1", column=2, row=2)
     assert rig.surface.key_of("c1") == 2
     assert rig.surface.count == 1
     await rig.close()
 
 
 async def test_the_apps_back_key_is_never_ours(rig: Rig) -> None:
-    rig.send("willAppear", "c1", column=0, row=0)
+    rig.send("willAppear", "c1", column=0, row=2)
     await rig.settle()
     assert rig.surface.count == 0
     assert rig.calls == []
-    rig.send("keyUp", "c1", column=0, row=0)
+    rig.send("keyUp", "c1", column=0, row=2)
     await rig.settle()
     assert rig.session.pressed == []
     await rig.close()
 
 
 async def test_other_actions_are_ignored(rig: Rig) -> None:
-    rig.send("willAppear", "c1", column=1, row=0, action="com.someone.else")
+    rig.send("willAppear", "c1", column=1, row=2, action="com.someone.else")
     await rig.settle()
     assert rig.surface.count == 0
     assert rig.calls == []
@@ -151,9 +159,9 @@ async def test_other_actions_are_ignored(rig: Rig) -> None:
 
 
 async def test_key_up_presses_the_session_slot(rig: Rig) -> None:
-    rig.send("willAppear", "c1", column=1, row=0)
-    rig.send("keyUp", "c1", column=1, row=0)  # key 1 → session index 0
-    rig.send("keyUp", "c1", column=4, row=2)  # key 14 → session index 13 (the pager slot)
+    rig.send("willAppear", "c1", column=1, row=2)
+    rig.send("keyUp", "c1", column=1, row=2)  # key 1 → session index 0
+    rig.send("keyUp", "c1", column=4, row=0)  # last key → session index 13 (pager slot)
     await rig.settle()
     assert rig.session.pressed == [0, 13]
     await rig.close()
@@ -164,7 +172,7 @@ async def test_a_failing_press_is_logged_not_raised(
 ) -> None:
     rig.session.fail = True
     with caplog.at_level(logging.ERROR):
-        rig.send("keyUp", "c1", column=2, row=0)
+        rig.send("keyUp", "c1", column=2, row=2)
         await rig.settle()
     assert "press" in caplog.text
     await rig.close()
@@ -172,27 +180,27 @@ async def test_a_failing_press_is_logged_not_raised(
 
 async def test_only_the_five_by_three_dock_is_used(rig: Rig) -> None:
     rig.connect("n3", columns=4, rows=3)
-    rig.send("willAppear", "c1", column=1, row=0, device="n3")
+    rig.send("willAppear", "c1", column=1, row=2, device="n3")
     await rig.settle()
     assert rig.surface.count == 0
     rig.connect("m18", columns=5, rows=3)
-    rig.send("willAppear", "c2", column=1, row=0, device="m18")
+    rig.send("willAppear", "c2", column=1, row=2, device="m18")
     assert rig.surface.key_of("c2") == 1
     await rig.close()
 
 
 async def test_the_first_dock_wins(rig: Rig) -> None:
-    rig.send("willAppear", "c1", column=1, row=0, device="first")
-    rig.send("willAppear", "c2", column=2, row=0, device="second")
+    rig.send("willAppear", "c1", column=1, row=2, device="first")
+    rig.send("willAppear", "c2", column=2, row=2, device="second")
     assert rig.surface.count == 1
     assert rig.surface.key_of("c1") == 1
     await rig.close()
 
 
 async def test_the_dock_can_come_back_after_unplugging(rig: Rig) -> None:
-    rig.send("willAppear", "c1", column=1, row=0, device="first")
+    rig.send("willAppear", "c1", column=1, row=2, device="first")
     rig.plugin.handle(json.dumps({"event": "deviceDidDisconnect", "device": "first"}))
-    rig.send("willAppear", "c2", column=2, row=0, device="second")
+    rig.send("willAppear", "c2", column=2, row=2, device="second")
     assert rig.surface.key_of("c2") == 2
     await rig.close()
 
@@ -204,7 +212,7 @@ async def test_garbage_is_ignored(rig: Rig) -> None:
 
 
 async def test_close_stops_herdr(rig: Rig) -> None:
-    rig.send("willAppear", "c1", column=1, row=0)
+    rig.send("willAppear", "c1", column=1, row=2)
     await rig.settle()
     await rig.close()
     assert rig.calls == ["start", "stop"]
@@ -214,10 +222,10 @@ async def test_appearing_pressing_and_disappearing_are_logged(
     rig: Rig, caplog: pytest.LogCaptureFixture
 ) -> None:
     with caplog.at_level(logging.INFO):
-        rig.send("willAppear", "c1", column=1, row=0)
-        rig.send("keyUp", "c1", column=1, row=0)
+        rig.send("willAppear", "c1", column=1, row=2)
+        rig.send("keyUp", "c1", column=1, row=2)
         await rig.settle()  # herdr starts while the key is visible
-        rig.send("willDisappear", "c1", column=1, row=0)
+        rig.send("willDisappear", "c1", column=1, row=2)
         await rig.settle()
     assert "key 2 appeared" in caplog.text
     assert "key 2 pressed" in caplog.text

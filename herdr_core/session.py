@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from herdr_core.backoff import Backoff
 from herdr_core.errors import HerdrError
 from herdr_core.events import FocusChanged, HerdrEvent, StatusChanged, TopologyChanged
-from herdr_core.models import AgentStatus
+from herdr_core.models import Agent, AgentStatus
 from herdr_core.paging import PageView, paginate
 from herdr_core.ports import Clock, EventStream, HerdrApi, HerdrEventSource, Raiser, Sleep
 from herdr_core.store import AgentStore
@@ -70,6 +70,7 @@ class HerdrSession:
         self._clock = clock
         self._focus_interval = focus_refresh_interval
         self._focus_pending = False
+        self._tab_focus_warned = False
         self._last_sync = -math.inf
         self._store = AgentStore()
         self._page = 0
@@ -124,7 +125,21 @@ class HerdrSession:
         except HerdrError as exc:
             log.warning("could not focus %s: %s", agent.pane_id, exc)
             return
+        await self._focus_tab(agent)
         await self._raiser.raise_window(agent)
+
+    async def _focus_tab(self, agent: Agent) -> None:
+        """Make an attached herdr UI show the agent: herdr 0.9 UIs ignore `agent.focus` alone.
+
+        Best effort: older herdr versions switch on `agent.focus`, so a failure here is logged
+        once and never blocks raising the window.
+        """
+        try:
+            await self._api.focus_tab(agent.tab_id)
+        except HerdrError as exc:
+            if not self._tab_focus_warned:
+                log.warning("could not focus the tab of %s: %s", agent.pane_id, exc)
+                self._tab_focus_warned = True
 
     def next_page(self) -> None:
         self._page = paginate(self._store.slots(), self._capacity, self._page + 1).page

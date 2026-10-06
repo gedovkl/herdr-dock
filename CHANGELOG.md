@@ -17,6 +17,25 @@ What was built, in order, and what was learned along the way. Architecture and r
 
 ## macOS plugin: manifest, build, install (milestone 5, step 2)
 
+- **herdr 0.9.0: pressing an agent didn't switch the herdr UI.** `agent.focus` completes `ok` and
+  moves the server's focus, but an attached UI ignores it. `tab.focus` makes the UI follow, so
+  `HerdrSession.press` now sends both (`HerdrApi.focus_tab`, shared with Linux; a failure is
+  logged once and never blocks the raise). Verified by hand on the live session and by a live
+  test in a throwaway one. The live tests also now accept 0.9's `idle` (0.8: `done`) and the
+  macOS `/private/tmp` path.
+- **Pressing an agent now raises its terminal** (macOS default `[raise] macos = "herdr-window"`):
+  `macos/raiser.py` finds the terminal app above the attached herdr client and `open`s it. Verified
+  on this Mac's process table: WezTerm. The process helpers (`Process`, `herdr_clients`,
+  `ancestors`, `run_exec`) moved from `linux/hyprland.py` into `herdr_core/processes.py` and the
+  Linux raiser uses them, with no behaviour change (all Linux tests unchanged).
+- Presses were already reaching herdr (`agent.focus` completed `ok` in herdr's own log); only the
+  window raise was missing, which is why the keys seemed to do nothing.
+- **Bug found on the dock:** the app numbers the M18's rows from the bottom (the folder back key,
+  top-left, is stored at `0,2`), but the plugin treated row 0 as the top. Agents placed on keys
+  2-5 were read as keys 12-15, empty slots, so they stayed black. Fixed test-first:
+  key index = `(2 - row) * 5 + column`. The first spike's "top-left origin" note was never checked
+  against the physical dock.
+
 - `macos/com.herdr.dock.sdPlugin/manifest.json` (one action, `com.herdr.dock.agent`), the icon
   (`tools/make_plugin_icons.py`, drawn by the same `KeyRenderer` as the keys) and
   `macos/plugin.spec`. `scripts/build-macos-plugin.sh` builds a 15 MB self-contained binary (the
@@ -40,7 +59,7 @@ A throwaway plugin on the real M18 settled the macOS open items (details in DESI
 
 - `CodePathMac` launches a script or executable with `-port -pluginUUID -registerEvent -info`.
   Plugins get a minimal `PATH`, so the plugin must find `herdr` itself.
-- Key events carry `coordinates {column, row}`: key index = `row * 5 + column`.
+- Key events carry `coordinates {column, row}`; rows count from the bottom (found later, see below).
 - Folders get a fixed back key on key 1: no Exit action. Folder enter/leave arrives as bursts of
   `willDisappear` then `willAppear`, so the session stop needs a short grace delay.
 - 64 × 64 PNG `setImage` displays sharp.

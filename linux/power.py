@@ -19,7 +19,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from herdr_core.ports import Sleep
-from linux.hyprland import Exec, run_exec
+from herdr_core.processes import Exec, run_exec
 
 log = logging.getLogger(__name__)
 

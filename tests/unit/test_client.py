@@ -40,6 +40,14 @@ async def test_focus_sends_target(herdr_server: FakeHerdrServer) -> None:
     assert herdr_server.requests[-1]["params"] == {"target": "w1:p1"}
 
 
+async def test_focus_tab_sends_tab_id(herdr_server: FakeHerdrServer) -> None:
+    herdr_server.add_agent("w1:p1")
+    await client_for(herdr_server).focus_tab("w1:t1")
+    request = herdr_server.requests[-1]
+    assert request["method"] == "tab.focus"
+    assert request["params"] == {"tab_id": "w1:t1"}
+
+
 async def test_error_reply_raises_request_error(herdr_server: FakeHerdrServer) -> None:
     with pytest.raises(HerdrRequestError) as info:
         await client_for(herdr_server).focus_agent("w9:p9")

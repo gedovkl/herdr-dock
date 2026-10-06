@@ -22,8 +22,6 @@ DEFAULT_DEVICE_IDS: tuple[tuple[int, int], ...] = (
     (0x6603, 0x1009),
     (0x6603, 0x1012),
 )
-HERDR_WINDOW = "herdr-window"
-"""`[raise] linux` value meaning: focus the window the herdr client runs in (Hyprland)."""
 
 
 @dataclass(frozen=True, slots=True)

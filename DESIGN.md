@@ -296,6 +296,13 @@ Slot numbering is logical (0..n), and each front end maps it to physical keys:
   becomes `idle`.
 - `agent.list` fields used: `pane_id`, `workspace_id`, `tab_id`, `agent`, `agent_status`,
   `cwd`, `terminal_title_stripped`, `focused`.
+- **herdr 0.9.0 (protocol 22), found on the Mac:** an attached UI ignores `agent.focus` (the
+  server's focus moves, but the terminal keeps showing its own tab) and follows
+  `tab.focus {"tab_id": ...}`. So a key press sends `agent.focus` (marks the agent seen) and then
+  `tab.focus` for the agent's tab (best effort: a failure is logged once and the press still
+  raises the window). Also in 0.9: an agent going `blocked` → `idle` is reported as `idle`
+  at once in a headless session, not `done` (0.8.2). `herdr --skill` explains that each UI client
+  tracks its own view.
 - Focus: `agent.focus {"target": "<pane_id>"}`. Unknown targets return the error
   `{"code": "agent_not_found"}`. Focusing turns `done` into `idle` and emits `pane_focused`.
 - Request `id` **must be a string**. A numeric id gets `invalid_request`.
@@ -410,7 +417,12 @@ linux = "hyprctl dispatch focuswindow class:com.mitchellh.ghostty"
 macos = "osascript -e 'tell application \"Ghostty\" to activate'"
 ```
 
-Example presets will be documented for Ghostty, Alacritty, Kitty, iTerm2 and Terminal.app.
+On macOS the default (`macos = "herdr-window"` or empty) finds the terminal that hosts the herdr
+client: `ps` lists processes, `herdr_core.processes.herdr_clients` picks the attached clients, and
+the nearest ancestor inside an `X.app/Contents/MacOS/` path is the terminal, which `open X.app`
+brings forward. It raises the whole app (a multi-window terminal can't say which window holds the
+client), needs no permissions, and does nothing if herdr runs over ssh or tmux with no app above
+it. Process lookup, `run_exec` and `HERDR_WINDOW` are shared with Linux in `herdr_core`.
 
 ## Linux front end: `herdr-dock` daemon
 
@@ -644,8 +656,9 @@ After milestone 4 (all on Linux, all verified on the M18 unless noted):
   key 1 that a plugin can't replace. The plugin has no Exit action. A plugin still can't go
   back itself until the SDK adds page switching (#33).
 - ✅ **macOS slot mapping**: `willAppear`/`willDisappear`/`keyDown`/`keyUp` carry
-  `payload.coordinates {column, row}` (0-based, top-left origin). The M18 is 5 × 3, so
-  key index = `row * 5 + column`. No "slot #" setting is needed.
+  `payload.coordinates {column, row}` (0-based). The M18 is 5 × 3. **Rows count from the bottom**:
+  the folder's fixed back key (top-left) is stored at column 0, row 2. So key index (0 = top-left,
+  left to right, top to bottom) = `(2 - row) * 5 + column`. No "slot #" setting is needed.
 - ✅ **macOS plugin directory**: `~/Library/Application Support/HotSpot/StreamDock/plugins/`.
 - ✅ **macOS launch**: `CodePathMac` can be a script or executable. The app runs it with
   `-port -pluginUUID -registerEvent -info`, cwd = the plugin folder, as the user, with

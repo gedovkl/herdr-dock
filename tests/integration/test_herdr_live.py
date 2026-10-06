@@ -89,7 +89,7 @@ async def test_list_reports_agents(client: HerdrSocketClient) -> None:
     (agent,) = [a for a in await client.list_agents() if a.pane_id == pane_id]
     assert agent.kind == "claude"
     assert agent.status is AgentStatus.WORKING
-    assert agent.cwd == "/tmp"
+    assert Path(agent.cwd).resolve() == Path("/tmp").resolve()  # /tmp is a symlink on macOS
 
 
 async def test_status_events_and_focus_mark_done_as_seen(client: HerdrSocketClient) -> None:
@@ -99,9 +99,12 @@ async def test_status_events_and_focus_mark_done_as_seen(client: HerdrSocketClie
         await report(client, pane_id, "blocked")
         assert await _next_status(stream) == StatusChanged(pane_id, AgentStatus.BLOCKED)
         await report(client, pane_id, "idle")  # finished while unseen
-        assert await _next_status(stream) == StatusChanged(pane_id, AgentStatus.DONE)
-        await client.focus_agent(pane_id)
-        assert await _next_status(stream) == StatusChanged(pane_id, AgentStatus.IDLE)
+        status = (await _next_status(stream)).status
+        if status is AgentStatus.DONE:  # herdr 0.8: unseen completion; focusing marks it seen
+            await client.focus_agent(pane_id)
+            assert (await _next_status(stream)).status is AgentStatus.IDLE
+        else:  # herdr 0.9 reports idle at once in a headless session
+            assert status is AgentStatus.IDLE
     finally:
         await stream.close()
 
@@ -141,3 +144,14 @@ async def _until(predicate: Callable[[], bool], timeout: float = 5.0) -> None:
             await asyncio.sleep(0.02)
 
     await asyncio.wait_for(poll(), timeout)
+
+
+async def test_focus_tab_moves_focus_to_that_agent(client: HerdrSocketClient) -> None:
+    first = await new_agent(client, "idle")
+    second = await new_agent(client, "idle", cwd="/")
+    agents = {a.pane_id: a for a in await client.list_agents()}
+    await client.focus_tab(agents[first].tab_id)
+    assert {a.pane_id: a.focused for a in await client.list_agents()}[first]
+    await client.focus_tab(agents[second].tab_id)
+    focused = {a.pane_id: a.focused for a in await client.list_agents()}
+    assert focused[second] and not focused[first]

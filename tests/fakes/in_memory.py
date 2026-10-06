@@ -48,6 +48,9 @@ class InMemoryHerdr:
     subscribe_error: HerdrError | None = None
     list_calls: int = 0
     on_list: Callable[[], None] | None = None
+    calls: list[str] = field(default_factory=list)
+    """Every focus request in order: "agent:<pane_id>" and "tab:<tab_id>"."""
+    tab_error: HerdrError | None = None
 
     def add(self, pane_id: str, status: AgentStatus = AgentStatus.IDLE, **extra: object) -> Agent:
         workspace_id = pane_id.split(":", 1)[0]
@@ -92,8 +95,16 @@ class InMemoryHerdr:
             raise self.list_error
         return list(self.agents.values())
 
+    async def focus_tab(self, tab_id: str) -> None:
+        self.calls.append(f"tab:{tab_id}")
+        if self.tab_error is not None:
+            raise self.tab_error
+        if not any(agent.tab_id == tab_id for agent in self.agents.values()):
+            raise HerdrRequestError("tab_not_found", f"tab {tab_id} not found")
+
     async def focus_agent(self, pane_id: str) -> None:
         self.focus_calls.append(pane_id)
+        self.calls.append(f"agent:{pane_id}")
         agent = self.agents.get(pane_id)
         if agent is None:
             raise HerdrRequestError("agent_not_found", f"agent target {pane_id} not found")

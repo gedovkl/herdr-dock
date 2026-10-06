@@ -14,6 +14,10 @@ class HerdrApi(Protocol):
 
     async def focus_agent(self, pane_id: str) -> None: ...
 
+    async def focus_tab(self, tab_id: str) -> None:
+        """Switch to a tab. herdr 0.9's attached UIs follow this, but not `focus_agent`."""
+        ...
+
 
 class EventStream(Protocol):
     async def next_event(self) -> HerdrEvent:

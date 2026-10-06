@@ -15,12 +15,12 @@ import websocket
 
 from herdr_core.config import Config, ConfigError, load_config
 from herdr_core.faces import KeyLayout
-from herdr_core.raise_window import raiser_from_config
 from herdr_core.socket_path import resolve_socket_path
 from herdr_core.wiring import build_herdr_stack, configure_logging, start_herdr, stop_herdr
 from macos.herdr_path import herdr_status_reader
 from macos.lifecycle import VisibilityLifecycle
 from macos.plugin import COLUMNS, ROWS, HerdrPlugin
+from macos.raiser import macos_raiser
 from macos.surface import StreamDockSurface
 from macos.websocket import WebSocketTransport
 
@@ -72,7 +72,7 @@ async def run_plugin(
     stack = build_herdr_stack(
         config,
         surface,
-        raiser_from_config(config.raise_window, platform="darwin"),
+        macos_raiser(config.raise_window),
         socket,
         layout=layout,
         key_count=KEY_COUNT,

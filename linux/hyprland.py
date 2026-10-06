@@ -2,43 +2,16 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import re
-from collections.abc import Awaitable, Callable, Iterable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 
 from herdr_core.models import Agent
+from herdr_core.processes import Exec, Process, ancestors, herdr_clients, run_exec
 
 log = logging.getLogger(__name__)
-
-Exec = Callable[[Sequence[str]], Awaitable[tuple[int, str]]]
-
-
-@dataclass(frozen=True, slots=True)
-class Process:
-    pid: int
-    ppid: int
-    argv: tuple[str, ...]
-
-
-async def run_exec(argv: Sequence[str], timeout: float = 5.0) -> tuple[int, str]:
-    """Run a command without a shell; returns (exit code, stdout). 127 = couldn't start it."""
-    try:
-        process = await asyncio.create_subprocess_exec(
-            *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
-        )
-    except OSError:
-        return 127, ""
-    try:
-        out, _ = await asyncio.wait_for(process.communicate(), timeout)
-    except TimeoutError:
-        process.kill()
-        await process.wait()
-        return -1, ""
-    return process.returncode or 0, out.decode(errors="replace")
 
 
 def read_processes(proc: Path = Path("/proc")) -> dict[int, Process]:
@@ -58,21 +31,6 @@ def read_processes(proc: Path = Path("/proc")) -> dict[int, Process]:
     return processes
 
 
-def herdr_clients(processes: Iterable[Process]) -> list[Process]:
-    """Attached herdr TUI clients (not `herdr server` or one-shot CLI calls)."""
-    clients = []
-    for process in processes:
-        if not process.argv or Path(process.argv[0]).name != "herdr":
-            continue
-        rest = process.argv[1:]
-        attached = (
-            not rest or rest[0] in ("--session", "--remote") or rest[:2] == ("session", "attach")
-        )
-        if attached and "server" not in rest:
-            clients.append(process)
-    return clients
-
-
 def window_for(
     clients: Iterable[Process], processes: dict[int, Process], windows: Sequence[dict[str, object]]
 ) -> str | None:
@@ -89,16 +47,10 @@ def window_for(
             by_pid.setdefault(pid, []).append(window)
     candidates: list[dict[str, object]] = []
     for client in clients:
-        pid, seen = client.pid, set()
-        while pid > 1 and pid not in seen:
-            seen.add(pid)
-            if pid in by_pid:
-                candidates.extend(by_pid[pid])
+        for process in ancestors(client.pid, processes):
+            if process.pid in by_pid:
+                candidates.extend(by_pid[process.pid])
                 break
-            parent = processes.get(pid)
-            if parent is None:
-                break
-            pid = parent.ppid
     if not candidates:
         return None
     address = min(candidates, key=_history).get("address")

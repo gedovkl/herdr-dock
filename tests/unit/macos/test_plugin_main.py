@@ -52,7 +52,7 @@ class BlockingApp:
                 "action": ACTION_UUID,
                 "context": "c1",
                 "device": "m18",
-                "payload": {"coordinates": {"column": 1, "row": 0}},
+                "payload": {"coordinates": {"column": 1, "row": 2}},
             },
         ]
 

@@ -151,6 +151,13 @@ class FakeHerdrServer:
             await self._reply(writer, request, result={"type": "agent_list", "agents": agents})
         elif method == "agent.focus":
             await self._focus(writer, request, params["target"])
+        elif method == "tab.focus":
+            tab = next((a for a in self.agents if a["tab_id"] == params["tab_id"]), None)
+            if tab is None:
+                error = {"code": "tab_not_found", "message": f"tab {params['tab_id']} not found"}
+                await self._reply(writer, request, error=error)
+            else:
+                await self._reply(writer, request, result={"type": "tab_info"})
         else:
             error = {"code": "unknown_method", "message": method}
             await self._reply(writer, request, error=error)

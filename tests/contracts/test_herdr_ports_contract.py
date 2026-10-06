@@ -68,6 +68,18 @@ async def test_focus_unknown_agent_raises(harness: Harness) -> None:
     assert info.value.code == "agent_not_found"
 
 
+async def test_focus_tab_of_a_known_agent_succeeds(harness: Harness) -> None:
+    harness.add("w1:p1", AgentStatus.IDLE)
+    (agent,) = await harness.port.list_agents()
+    await harness.port.focus_tab(agent.tab_id)
+
+
+async def test_focus_unknown_tab_raises(harness: Harness) -> None:
+    with pytest.raises(HerdrRequestError) as info:
+        await harness.port.focus_tab("w9:t9")
+    assert info.value.code == "tab_not_found"
+
+
 async def test_focus_marks_done_agent_seen(harness: Harness) -> None:
     harness.add("w1:p1", AgentStatus.DONE)
     stream = await harness.port.subscribe({"w1:p1"})

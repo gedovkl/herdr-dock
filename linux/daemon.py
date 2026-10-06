@@ -13,13 +13,13 @@ import tempfile
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from herdr_core.config import Config, ConfigError, RaiseConfig, load_config
+from herdr_core.config import HERDR_WINDOW, Config, ConfigError, RaiseConfig, load_config
 from herdr_core.faces import KeyLayout
 from herdr_core.ports import Raiser, Sleep
 from herdr_core.raise_window import raiser_from_config
 from herdr_core.socket_path import resolve_socket_path, status_reader
 from herdr_core.wiring import build_herdr_stack, configure_logging
-from linux.config import HERDR_WINDOW, KEY_COUNT, HomeKey, LinuxConfig, load_linux_config
+from linux.config import KEY_COUNT, HomeKey, LinuxConfig, load_linux_config
 from linux.controller import DockController
 from linux.device import DeviceInput, M18Device, StreamDockSdk
 from linux.hyprland import HerdrWindowRaiser, WindowFocuser

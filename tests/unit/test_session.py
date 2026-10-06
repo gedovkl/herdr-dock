@@ -238,6 +238,31 @@ async def test_press_focuses_and_raises(rig: Rig) -> None:
     await rig.views.wait_for(lambda v: statuses(v)[0] == "w1:p1=idle")
 
 
+async def test_press_also_focuses_the_agents_tab_so_the_ui_follows(rig: Rig) -> None:
+    """herdr 0.9: an attached UI ignores agent.focus but follows tab.focus."""
+    rig.herdr.add("w1:p1", AgentStatus.IDLE)
+    await rig.session.start()
+    await rig.views.wait_for(connected)
+    await rig.session.press(0)
+    assert rig.herdr.calls == ["agent:w1:p1", "tab:w1:t1"]
+    assert rig.raiser.raised == ["w1:p1"]
+
+
+async def test_a_failing_tab_focus_still_raises_and_warns_once(
+    rig: Rig, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Older herdr versions may not know tab.focus; the press must still work."""
+    rig.herdr.add("w1:p1", AgentStatus.IDLE)
+    rig.herdr.tab_error = HerdrRequestError("unknown_method", "tab.focus")
+    await rig.session.start()
+    await rig.views.wait_for(connected)
+    await rig.session.press(0)
+    await rig.session.press(0)
+    assert rig.raiser.raised == ["w1:p1", "w1:p1"]
+    assert caplog.text.count("could not focus the tab") == 1
+    assert "unknown_method" in caplog.text
+
+
 async def test_press_on_empty_or_invalid_keys_does_nothing(rig: Rig) -> None:
     rig.herdr.add("w1:p1")
     await rig.session.start()

@@ -20,6 +20,10 @@ _LABEL_STYLES: tuple[LabelStyle, ...] = ("cwd", "title", "name")
 _HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
+HERDR_WINDOW = "herdr-window"
+"""`[raise]` value meaning: bring forward the terminal the herdr client runs in."""
+
+
 class ConfigError(Exception):
     pass
 

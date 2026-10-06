@@ -37,8 +37,10 @@ enabled = true
 # in (shell-quoted). Write literal braces as {{ and }}, e.g. for Hyprland's Lua dispatcher:
 #   linux = "hyprctl dispatch 'hl.dsp.focus({{ window = \"class:foot\" }})'"
 linux = "herdr-window"
-# macOS (milestone 5), example:
-# macos = "osascript -e 'tell application \"Ghostty\" to activate'"
+# macOS: "herdr-window" (or empty, the default) brings forward the terminal app the herdr client
+# runs in, with `open`. Any other value is a shell command, for example:
+# macos = "open -a Ghostty"
+# macos = "herdr-window"
 
 [linux]
 brightness = 70
