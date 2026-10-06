@@ -42,6 +42,9 @@ device_ids = ["5548:1000", "6603:1009", "6603:1012"]   # VID:PID, tried in order
 app_launcher = "uwsm-app -- {app}"                     # used by `app = ...` home keys
 poll_seconds = 2                                       # how often to look for the M18
 focus_herdr_on_enter = true                            # Herdr button also raises the herdr window
+blank_when_locked = true      # dock off while the session is locked (Hyprland session lock)
+blank_on_sleep = true         # dock off when the machine suspends (logind PrepareForSleep)
+lock_poll_seconds = 1         # how often to check the lock state
 
 # The three buttons under the screen: "herdr" (enter/leave Herdr mode), "page" (next agent page)
 # or "none"

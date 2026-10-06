@@ -69,6 +69,11 @@ class LinuxConfig:
     poll_seconds: float = 2.0
     focus_herdr_on_enter: bool = True
     """Entering Herdr mode also brings the herdr window to the front."""
+    blank_when_locked: bool = True
+    """Turn the dock off while the session is locked (Hyprland session lock)."""
+    blank_on_sleep: bool = True
+    """Turn the dock off when the machine suspends (logind PrepareForSleep)."""
+    lock_poll_seconds: float = 1.0
 
 
 def load_linux_config(path: Path | None = None) -> LinuxConfig:
@@ -98,11 +103,13 @@ def parse_linux_config(data: Mapping[str, Any], base_dir: Path | None = None) ->
     poll = raw.get("poll_seconds", defaults.poll_seconds)
     if isinstance(poll, bool) or not isinstance(poll, int | float) or poll <= 0:
         raise ConfigError(f"linux.poll_seconds must be a positive number, got {poll!r}")
-    focus_on_enter = raw.get("focus_herdr_on_enter", defaults.focus_herdr_on_enter)
-    if not isinstance(focus_on_enter, bool):
-        raise ConfigError(
-            f"linux.focus_herdr_on_enter must be true or false, got {focus_on_enter!r}"
-        )
+    flags = {
+        name: _bool(raw, name, getattr(defaults, name))
+        for name in ("focus_herdr_on_enter", "blank_when_locked", "blank_on_sleep")
+    }
+    lock_poll = raw.get("lock_poll_seconds", defaults.lock_poll_seconds)
+    if isinstance(lock_poll, bool) or not isinstance(lock_poll, int | float) or lock_poll <= 0:
+        raise ConfigError(f"linux.lock_poll_seconds must be a positive number, got {lock_poll!r}")
     launcher = raw.get("app_launcher", defaults.app_launcher)
     if not isinstance(launcher, str) or "{app}" not in launcher:
         raise ConfigError("linux.app_launcher must be a string containing {app}")
@@ -113,8 +120,16 @@ def parse_linux_config(data: Mapping[str, Any], base_dir: Path | None = None) ->
         home=_home(data.get("home"), base_dir or Path.cwd()) or defaults.home,
         buttons=_buttons(raw.get("buttons", {}), defaults.buttons),
         poll_seconds=float(poll),
-        focus_herdr_on_enter=focus_on_enter,
+        lock_poll_seconds=float(lock_poll),
+        **flags,
     )
+
+
+def _bool(raw: Mapping[str, Any], name: str, default: bool) -> bool:
+    value = raw.get(name, default)
+    if not isinstance(value, bool):
+        raise ConfigError(f"linux.{name} must be true or false, got {value!r}")
+    return value
 
 
 def _device_ids(raw: object) -> tuple[tuple[int, int], ...]:

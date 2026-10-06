@@ -28,6 +28,7 @@ from linux.controller import DockController
 from linux.device import DeviceInput, M18Device, StreamDockSdk
 from linux.hyprland import HerdrWindowRaiser, WindowFocuser
 from linux.launcher import ShellLauncher
+from linux.power import LockMonitor, SleepMonitor
 from linux.widgets import ClockWidget, WeatherWidget, Widget
 
 log = logging.getLogger("herdr_dock")
@@ -45,6 +46,16 @@ class _Tick:
 
 
 _TICK = _Tick()
+
+
+class _Blank:
+    """Queue item: turn the dock off (True) or on (False)."""
+
+    def __init__(self, blank: bool) -> None:
+        self.blank = blank
+
+    def __repr__(self) -> str:
+        return f"_Blank({self.blank})"
 
 
 def default_workdir(env: dict[str, str] | os._Environ[str] = os.environ) -> Path:
@@ -96,9 +107,42 @@ class Daemon:
         self._widgets = dict(widgets or {})
         self._sleep = sleep
         # Key presses and redraws share one queue so they never run concurrently.
-        self._inputs: asyncio.Queue[DeviceInput | _Redraw | _Tick] = asyncio.Queue()
+        self._inputs: asyncio.Queue[DeviceInput | _Redraw | _Tick | _Blank] = asyncio.Queue()
+        self._monitors: list[LockMonitor | SleepMonitor] = []
+        self._locked = self._asleep = False
+        self._blank_when_locked = self._blank_on_sleep = False
         self._last_error = ""
         self._announced_wait = False
+
+    def watch_power(
+        self,
+        *,
+        blank_when_locked: bool,
+        blank_on_sleep: bool,
+        lock_poll_seconds: float = 1.0,
+        lock: LockMonitor | None = None,
+        sleep: SleepMonitor | None = None,
+    ) -> None:
+        """Turn the dock off while the session is locked and/or the machine sleeps."""
+        self._blank_when_locked, self._blank_on_sleep = blank_when_locked, blank_on_sleep
+        if blank_when_locked:
+            self._monitors.append(lock or LockMonitor(self._on_locked, interval=lock_poll_seconds))
+        if blank_on_sleep:
+            self._monitors.append(sleep or SleepMonitor(self._on_asleep))
+
+    def _on_locked(self, locked: bool) -> None:
+        self._locked = locked
+        self._queue_blank()
+
+    def _on_asleep(self, asleep: bool) -> None:
+        self._asleep = asleep
+        self._queue_blank()
+
+    def _queue_blank(self) -> None:
+        blank = (self._locked and self._blank_when_locked) or (
+            self._asleep and self._blank_on_sleep
+        )
+        self._inputs.put_nowait(_Blank(blank))
 
     def on_input(self, event: DeviceInput) -> None:
         """Device callback (already on the event loop)."""
@@ -111,6 +155,8 @@ class Daemon:
         ]
         if self._widgets:
             tasks.append(asyncio.create_task(self._tick_widgets(), name="widget-tick"))
+        for monitor in self._monitors:
+            tasks.append(asyncio.create_task(monitor.run(), name=type(monitor).__name__))
         for widget in self._widgets.values():
             if isinstance(widget, WeatherWidget):
                 tasks.append(asyncio.create_task(self._refresh_weather(widget), name="weather"))
@@ -135,6 +181,8 @@ class Daemon:
                     await self._controller.redraw()
                 elif isinstance(event, _Tick):
                     await self._controller.tick()
+                elif isinstance(event, _Blank):
+                    await self._controller.set_blank(event.blank)
                 else:
                     await self._controller.handle(event)
             except Exception:
@@ -226,8 +274,14 @@ def build(
         focuser=WindowFocuser(),
         on_enter=HerdrWindowRaiser().raise_herdr_window if linux.focus_herdr_on_enter else None,
         widgets=widgets,
+        screen=device,
     )
     daemon = Daemon(device, controller, poll_seconds=linux.poll_seconds, widgets=widgets)
+    daemon.watch_power(
+        blank_when_locked=linux.blank_when_locked,
+        blank_on_sleep=linux.blank_on_sleep,
+        lock_poll_seconds=linux.lock_poll_seconds,
+    )
     holder.append(daemon.on_input)
     return daemon, controller
 

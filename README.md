@@ -24,6 +24,9 @@ for what was built and what was learned about herdr and the M18 along the way.
   agents, and middle does nothing. All three are configurable.
 - herdr is only contacted while Herdr mode is on. Entering Herdr mode also brings the herdr
   window to the front (`focus_herdr_on_enter`).
+- **Lock and sleep:** the dock turns off (brightness 0, keys cleared) while the session is
+  locked or the machine is asleep, and comes back as it was. Presses are ignored while it's
+  off, so nothing launches by accident. Configured with `blank_when_locked` and `blank_on_sleep`.
 - The dock can be unplugged and replugged at any time. The daemon keeps running, logs
   "waiting for the M18", and redraws when the dock comes back. It also starts fine with no
   dock plugged in.
@@ -124,6 +127,7 @@ Every setting is documented in [`config.example.toml`](config.example.toml). The
 | `[[home]]` | Home-page keys: `key = 1..15` plus one of `herdr = true`, `app = "<desktop id>"`, `run = "<shell command>"` or `widget = "clock" \| "weather"`. Optional `label`, `symbol`, `icon = "<path>"`, and `focus = "<window class regex>"` to focus an already-running window instead of starting another one |
 | `[linux.buttons]` | `left`/`middle`/`right` → `"herdr"`, `"page"` or `"none"` |
 | `[linux] focus_herdr_on_enter` | `true` (default): entering Herdr mode also brings the herdr window to the front (Hyprland) |
+| `[linux] blank_when_locked`, `blank_on_sleep` | `true` (default): turn the dock off while the session is locked / the machine sleeps. `lock_poll_seconds` (1) sets how quickly a lock is noticed |
 | `[raise] linux` | `"herdr-window"` (default): focus the window the herdr client runs in, via Hyprland. Any other value is a shell command (`{pane_id}`, `{cwd}`, … are filled in; write literal braces as `{{ }}`). Set `enabled = false` to never raise |
 | `label` | Text under the symbol: `"cwd"` (folder), `"title"` or `"name"` |
 | `attention` | Statuses that blink or pulse: `["blocked"]` by default; add `"done"` to make finished work pulse until you look at it |
@@ -234,6 +238,7 @@ systemctl --user restart herdr-dock
 | `tools/probe_m18.py` or the hardware tests can't open the device | Only one process can drive the M18. Stop the daemon first: `systemctl --user stop herdr-dock` |
 | An `app = …` home key does nothing | `uwsm-app` couldn't resolve the name. Use the desktop ID with `.desktop` (see step 6), and check `journalctl --user -u herdr-dock` |
 | Dock was unplugged | Nothing to do: plug it back in and it redraws within about 2 s |
+| Dock doesn't turn off when locked | Lock detection uses Hyprland's session-lock state (`hyprctl -j monitors` → `solitaryBlockedBy` contains `LOCK`). It works with omarchy-shell, hyprlock and other ext-session-lock lockers. Without Hyprland it switches itself off, logging `lock blanking is off`. Sleep detection needs `dbus-monitor` |
 | Weather key shows `--` | No network, or the coordinates are wrong. The log says `weather update failed …` once. It retries every minute |
 | Service doesn't start at login | `systemctl --user status herdr-dock`. It needs `graphical-session.target`, which uwsm and most Wayland session managers provide |
 

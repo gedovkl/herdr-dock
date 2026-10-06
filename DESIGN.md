@@ -419,6 +419,7 @@ flowchart LR
 | `linux/launcher.py` | `ShellLauncher`: detached `run` commands and `app` launches (`uwsm-app -- {app}`) |
 | `linux/widgets.py` | Live home keys: `ClockWidget` (strftime) and `WeatherWidget` (Open-Meteo, WMO code → glyph, keeps the last reading on failure) |
 | `linux/service.py` | Renders the systemd unit (quoted `ExecStart`, `%` escaped) |
+| `linux/power.py` | `LockMonitor` (Hyprland session lock via `hyprctl -j monitors`) and `SleepMonitor` (logind `PrepareForSleep` via `dbus-monitor`) |
 | `linux/hyprland.py` | `HerdrWindowRaiser`: focuses the window hosting the herdr client (walks `/proc` parents to a `hyprctl clients` pid) |
 | `linux/config.py` | `[linux]`, `[linux.buttons]` and `[[home]]` settings |
 | `linux/daemon.py` | Composition root, input queue, replug watcher, signal handling, clean shutdown (keys cleared) |
@@ -456,6 +457,21 @@ flowchart LR
 - The SDK writes temporary JPEGs into the current directory, so the daemon `chdir`s to
   `$XDG_RUNTIME_DIR/herdr-dock`.
 - Replug: the daemon polls presence every `poll_seconds` (2 s), reconnects, and redraws the current mode.
+
+**Lock and sleep**: the daemon turns the dock off while the session is locked
+(`blank_when_locked`) or the machine sleeps (`blank_on_sleep`).
+- **Lock:** Hyprland exposes no lock event, but an active ext-session-lock adds `LOCK` to every
+  monitor's `solitaryBlockedBy` (the same signal Omarchy's `omarchy-hyprland-session-locked`
+  uses). It's polled every `lock_poll_seconds`, and it works with any ext-session-lock locker.
+- **Sleep:** logind's `PrepareForSleep(true/false)`, streamed from
+  `dbus-monitor --system`, so the dock goes dark the moment suspend starts. Omarchy also locks
+  before suspending, so both signals usually agree.
+- **Off** means `set_brightness(0)` plus cleared keys. The off state is remembered across
+  reconnects (a resume often re-enumerates USB). While off, presses are ignored, home ticks are
+  skipped and the Herdr-mode presenter is stopped. **On** restores brightness and fully redraws the
+  current mode.
+- Lock/sleep changes go through the input queue like everything else. If `hyprctl` or
+  `dbus-monitor` is unavailable, that monitor logs once and stops; the rest keeps working.
 
 **Raise**: `[raise] linux = "herdr-window"` (the default) focuses the terminal the herdr client
 runs in, whichever terminal that is, using Hyprland ≥ 0.55 Lua dispatch

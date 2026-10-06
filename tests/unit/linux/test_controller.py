@@ -251,3 +251,35 @@ async def test_widget_keys_and_tick(rig: Rig) -> None:
     clock.text = "14:09"
     await rig.controller.tick()  # Herdr mode: the home page isn't visible
     assert 4 not in rig.surface.calls
+
+
+async def test_blank_turns_off_ignores_presses_and_restores(rig: Rig) -> None:
+    screen: list[bool] = []
+
+    class Screen:
+        async def set_screen(self, on: bool) -> None:
+            screen.append(on)
+
+    rig.controller._screen = Screen()
+    await rig.controller.draw_home()
+    await rig.controller.set_blank(True)
+    await rig.controller.set_blank(True)  # no change: nothing happens
+    assert screen == [False] and rig.controller.blank
+    rig.surface.calls.clear()
+    await rig.controller.handle(KeyPressed(2))  # stray press while locked
+    await rig.controller.tick()
+    await rig.controller.redraw()
+    assert rig.launcher.runs == [] and rig.surface.calls == []
+    await rig.controller.set_blank(False)
+    assert screen == [False, True]
+    assert len(rig.surface.calls) == 15  # home page fully redrawn
+
+
+async def test_blank_in_herdr_mode_pauses_animation(rig: Rig) -> None:
+    rig.herdr.add("w1:p1", AgentStatus.WORKING)
+    await rig.controller.enter_herdr()
+    await rig.settle()
+    await rig.controller.set_blank(True)  # no screen port: still pauses the presenter
+    assert rig.presenter._task is None
+    await rig.controller.set_blank(False)
+    assert rig.presenter._task is not None

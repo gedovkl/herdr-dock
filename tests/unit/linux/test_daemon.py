@@ -35,7 +35,8 @@ def built(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Daemon, Fake
     sdk = FakeSdk()
     monkeypatch.setattr(daemon_module, "StreamDockSdk", lambda: sdk)
     monkeypatch.setattr("linux.device.os.access", lambda path, mode: True)
-    daemon, _ = build(Config(), LinuxConfig(poll_seconds=0.01), tmp_path / "h.sock", tmp_path)
+    linux = LinuxConfig(poll_seconds=0.01, blank_when_locked=False, blank_on_sleep=False)
+    daemon, _ = build(Config(), linux, tmp_path / "h.sock", tmp_path)
     daemon._device._exists = lambda path: bool(sdk.devices)  # node exists while plugged in
     yield daemon, sdk
     os.chdir(cwd)
@@ -146,7 +147,10 @@ def test_main_runs_until_stopped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(daemon_module, "serve", fake_serve)
     monkeypatch.setattr(daemon_module, "default_workdir", lambda: tmp_path)
     config = tmp_path / "c.toml"
-    config.write_text('[linux]\nbrightness = 30\n[[home]]\nkey = 1\nlabel = "h"\nherdr = true\n')
+    config.write_text(
+        "[linux]\nbrightness = 30\nblank_when_locked = false\nblank_on_sleep = false\n"
+        '[[home]]\nkey = 1\nlabel = "h"\nherdr = true\n'
+    )
     cwd = os.getcwd()
     try:
         assert main(["--config", str(config), "--socket", "rel/herdr.sock", "-v"]) == 0
@@ -262,3 +266,50 @@ async def test_widget_tasks_tick_and_refresh_weather(built: tuple[Daemon, FakeSd
     await task
     assert sleeps.index(60) < sleeps.index(600)  # failed fetch retries sooner
     assert weather.face().temperature == "10°C"  # type: ignore[union-attr]
+
+
+async def test_lock_and_sleep_turn_the_dock_off_and_on(built: tuple[Daemon, FakeSdk]) -> None:
+    daemon, _ = built
+    blanks: list[bool] = []
+
+    async def set_blank(blank: bool) -> None:
+        blanks.append(blank)
+
+    class Idle:
+        async def run(self) -> None:
+            await asyncio.Event().wait()
+
+    daemon._controller.set_blank = set_blank  # type: ignore[method-assign]
+    daemon.watch_power(
+        blank_when_locked=True,
+        blank_on_sleep=True,
+        lock=Idle(),
+        sleep=Idle(),  # type: ignore[arg-type]
+    )
+    stop = asyncio.Event()
+    task = asyncio.create_task(daemon.run(stop))
+    daemon._on_locked(True)
+    daemon._on_asleep(True)
+    daemon._on_locked(False)  # still asleep → stays off
+    daemon._on_asleep(False)  # awake and unlocked → on
+    await _until(lambda: len(blanks) == 4)
+    stop.set()
+    await task
+    assert blanks == [True, True, True, False]
+
+
+async def test_blanking_options_can_be_switched_off(built: tuple[Daemon, FakeSdk]) -> None:
+    daemon, _ = built
+    daemon.watch_power(blank_when_locked=False, blank_on_sleep=True)
+    assert [type(m).__name__ for m in daemon._monitors] == ["SleepMonitor"]
+    daemon._on_locked(True)
+    assert daemon._inputs.get_nowait().blank is False  # type: ignore[union-attr]
+
+
+def test_build_wires_power_monitors_from_config(tmp_path: Path) -> None:
+    cwd = os.getcwd()
+    try:
+        daemon, _ = build(Config(), LinuxConfig(lock_poll_seconds=2), tmp_path / "s", tmp_path)
+    finally:
+        os.chdir(cwd)
+    assert sorted(type(m).__name__ for m in daemon._monitors) == ["LockMonitor", "SleepMonitor"]

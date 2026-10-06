@@ -222,3 +222,15 @@ async def test_failed_connect_closes_the_half_opened_device(
         await device.connect()
     assert not device.connected
     assert sdk.created[0].calls[-1] == ("close-removed",)  # released, without the disconnect write
+
+
+async def test_screen_off_and_on(rig: tuple[FakeSdk, M18Device, list[DeviceInput]]) -> None:
+    sdk, device, _ = rig
+    await device.set_screen(False)  # before connecting: remembered
+    sdk.plug(0x5548, 0x1000)
+    await device.connect()
+    assert ("brightness", 0) in sdk.created[0].calls  # connected while off: stays dark
+    await device.set_screen(True)
+    assert sdk.created[0].calls[-1] == ("brightness", 55)
+    await device.set_screen(False)
+    assert sdk.created[0].calls[-3:] == [("brightness", 0), ("clear",), ("refresh",)]

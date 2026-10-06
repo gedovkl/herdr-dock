@@ -26,6 +26,10 @@ class Focuser(Protocol):
     async def focus_matching(self, pattern: str) -> bool: ...
 
 
+class Screen(Protocol):
+    async def set_screen(self, on: bool) -> None: ...
+
+
 class Session(Protocol):
     async def start(self) -> None: ...
     async def stop(self) -> None: ...
@@ -61,6 +65,7 @@ class DockController:
         focuser: Focuser,
         on_enter: Callable[[], Awaitable[None]] | None = None,
         widgets: Mapping[int, Widget] | None = None,
+        screen: Screen | None = None,
     ) -> None:
         self._surface = surface
         self._renderer = renderer
@@ -73,6 +78,8 @@ class DockController:
         self._focuser = focuser
         self._on_enter = on_enter
         self._widgets = dict(widgets or {})
+        self._screen = screen
+        self._blank = False
         self._mode = Mode.HOME
         self._home_shown: dict[int, Face] = {}
 
@@ -80,7 +87,32 @@ class DockController:
     def mode(self) -> Mode:
         return self._mode
 
+    @property
+    def blank(self) -> bool:
+        return self._blank
+
+    async def set_blank(self, blank: bool) -> None:
+        """Turn the dock off (locked/asleep) or back on. Off: presses ignored, nothing drawn."""
+        if blank == self._blank:
+            return
+        self._blank = blank
+        if blank:
+            if self._mode is Mode.HERDR:
+                await self._presenter.stop()  # no animation frames while dark
+            if self._screen is not None:
+                await self._screen.set_screen(False)
+            return
+        if self._screen is not None:
+            await self._screen.set_screen(True)
+        if self._mode is Mode.HERDR:
+            self._presenter.invalidate()
+            await self._presenter.start()
+        else:
+            await self.draw_home(force=True)
+
     async def handle(self, event: DeviceInput) -> None:
+        if self._blank:
+            return  # a stray press while locked must not launch anything
         if isinstance(event, ButtonPressed):
             await self._button(self._buttons.get(event.name, "none"))
         elif self._mode is Mode.HOME:
@@ -115,6 +147,8 @@ class DockController:
 
     async def redraw(self) -> None:
         """Repaint everything, e.g. after the device was replugged."""
+        if self._blank:
+            return
         if self._mode is Mode.HOME:
             await self.draw_home(force=True)
         else:
@@ -132,7 +166,7 @@ class DockController:
 
     async def tick(self) -> None:
         """Refresh live home keys (clock, weather); only keys that changed are sent."""
-        if self._mode is Mode.HOME and self._widgets:
+        if self._mode is Mode.HOME and self._widgets and not self._blank:
             await self.draw_home()
 
     async def shutdown(self) -> None:

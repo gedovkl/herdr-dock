@@ -3,6 +3,21 @@
 What was built, in order, and what was learned along the way. Architecture and rationale live in
 [DESIGN.md](DESIGN.md); setup is in [README.md](README.md).
 
+## Dock off on lock and sleep
+
+- `[linux] blank_when_locked` / `blank_on_sleep` (both default `true`): brightness 0 plus cleared
+  keys while the session is locked or the machine sleeps, then a full redraw on return.
+- **Lock detection**: Omarchy locks with omarchy-shell's ext-session-lock, not hyprlock, so
+  watching a locker process doesn't work. Hyprland lists `LOCK` in each monitor's
+  `solitaryBlockedBy` while any session lock is active, so that's polled every
+  `lock_poll_seconds`.
+- **Sleep detection**: logind `PrepareForSleep` via `dbus-monitor --system`, which is already
+  installed and is what Omarchy's own sleep monitor uses. No new Python dependency.
+- While off, presses are ignored (a stray press while locked can't launch apps), the clock stops
+  ticking, and Herdr-mode animation pauses. The off state survives a USB re-enumeration on
+  resume.
+- Without `hyprctl` or `dbus-monitor`, that feature switches itself off with one log line.
+
 ## Clock and weather keys
 
 - `widget = "clock"`: time and date with configurable `time_format`/`date_format` (strftime,

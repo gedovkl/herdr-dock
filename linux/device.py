@@ -115,6 +115,7 @@ class M18Device:
         self._exists = exists
         self._device: SdkDevice | None = None
         self._path = ""
+        self._screen_on = True
         self._executor = concurrent.futures.ThreadPoolExecutor(1, thread_name_prefix="m18")
         self._loop: asyncio.AbstractEventLoop | None = None
 
@@ -141,6 +142,10 @@ class M18Device:
 
     async def clear(self) -> None:
         await self._call(self._clear)
+
+    async def set_screen(self, on: bool) -> None:
+        """Dock off: brightness 0 and keys cleared. Remembered across reconnects."""
+        await self._call(self._set_screen, on)
 
     async def disconnect(self, *, removed: bool = False) -> None:
         """Close the device. `removed`: it was unplugged, so send it nothing more."""
@@ -182,7 +187,7 @@ class M18Device:
             if not device.open():
                 raise DeviceError(f"opening {path} failed")
             device.init()
-            device.set_brightness(self._brightness)
+            device.set_brightness(self._brightness if self._screen_on else 0)
             device.clearAllIcon()
             device.refresh()
             device.set_raw_read_callback(self._raw)
@@ -215,6 +220,16 @@ class M18Device:
         if device.set_key_image(key + 1, str(path)) == -1:
             raise DeviceError(f"setting key {key} failed")
         device.refresh()
+
+    def _set_screen(self, on: bool) -> None:
+        self._screen_on = on
+        device = self._writable()
+        if device is None:
+            return
+        device.set_brightness(self._brightness if on else 0)
+        if not on:
+            device.clearAllIcon()
+            device.refresh()
 
     def _clear(self) -> None:
         device = self._writable()
