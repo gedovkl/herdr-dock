@@ -79,8 +79,9 @@ flowchart TB
         store["AgentStore<br/>pane_id → Agent<br/>stable slots, paging"]
         render["KeyRenderer<br/>status → 64×64 PNG frames<br/>cache + animation ticker"]
         actions["Actions<br/>agent.focus + WindowRaiser"]
-        session["HerdrSession<br/>start / stop / press<br/>on_slot_image(slot, png)"]
-        client --> store --> render --> session
+        session["HerdrSession<br/>start / stop / press<br/>on_view(SessionView)"]
+        client --> store --> session
+        session -->|SessionView| render
         session --> actions --> client
     end
 
@@ -198,35 +199,58 @@ sequenceDiagram
 sequenceDiagram
     participant H as herdr server
     participant C as HerdrClient
+    participant Se as HerdrSession
     participant S as AgentStore
-    participant R as KeyRenderer
     participant F as Front end
+    participant R as KeyRenderer
 
+    Se->>C: list_agents()
     C->>H: agent.list
     H-->>C: agents[]
-    C->>S: replace(agents)
-    C->>H: events.subscribe [agent_status_changed per pane, agent_detected, pane.created/closed/exited]
+    Se->>C: subscribe(agent pane ids)
+    C->>H: events.subscribe [agent_status_changed per pane + topology events]
     H-->>C: subscription_started
-    loop every event
+    Se->>C: list_agents() again (closes the subscribe gap)
+    Se->>S: replace(agents)
+    Se->>F: on_view(SessionView)
+    loop every event (or resync timeout)
         H-->>C: pane.agent_status_changed {pane_id, agent_status}
-        C->>S: update(pane_id, status)
-        S->>R: changed slots
-        R->>F: on_slot_image(slot, png_bytes)  (only if image changed)
+        C-->>Se: StatusChanged
+        Se->>S: apply_status(pane_id, status)
+        Se->>F: on_view(SessionView)  (only if the view changed)
+        F->>R: render changed keys → PNG frames
     end
-    Note over C,H: pane.created / agent_detected → re-list + resubscribe (status subscriptions need pane_id)
+    Note over Se,H: topology event or status for an unknown pane → re-list + resubscribe
 ```
 
 ### Front-end interface
 
+Implemented in `herdr_core/session.py`. The session publishes a **view model**. It doesn't render
+pixels, so rendering (milestone 2) stays a separate responsibility that front ends compose
+with it.
+
 ```python
 class HerdrSession:
-    def __init__(self, config, on_slot_image: Callable[[int, bytes], None]): ...
-    def set_slot_count(self, n_agent_slots: int, has_pager: bool): ...  # from the layout
-    async def start(self): ...        # connect, list, subscribe, render all slots
-    async def stop(self): ...         # unsubscribe, close socket, cancel timers
-    async def press(self, slot: int): ...  # agent slot → focus+raise; pager → next page
-    def exit_image(self) -> bytes: ...     # Exit key face with blocked/done summary
+    def __init__(self, api: HerdrApi, events: HerdrEventSource, raiser: Raiser, *,
+                 capacity: int,                      # keys available for agents + pager
+                 on_view: Callable[[SessionView], None],
+                 resync_interval: float = 30.0, backoff: Backoff | None = None,
+                 sleep: Sleep = asyncio.sleep): ...
+    async def start(self) -> None: ...   # connect, list, subscribe, follow events
+    async def stop(self) -> None: ...    # close stream, cancel task, emit offline view
+    async def press(self, key_index: int) -> None: ...  # agent → focus+raise; pager → next page
+    def next_page(self) -> None: ...
+
+@dataclass(frozen=True)
+class SessionView:
+    connected: bool
+    page: PageView              # agents on this page (None = empty key), has_pager, offpage_statuses
+    total_agents: int
+    statuses: frozenset[AgentStatus]   # across all agents, for the Exit key summary
 ```
+
+`on_view` fires only when the view actually changes. Key index 0 is the first agent key, and
+index `capacity - 1` is the pager when one is shown.
 
 Slot numbering is logical (0..n), and each front end maps it to physical keys:
 - Linux: the daemon maps logical keys 2..15 to slot indexes.
@@ -238,8 +262,8 @@ Slot numbering is logical (0..n), and each front end maps it to physical keys:
 - Socket: `herdr status server` prints the path (`~/.config/herdr/herdr.sock` here). The core
   resolves the path in this order: config value, then the `HERDR_SOCKET` env var, then the
   `herdr status server` output, then the default path. On macOS the StreamDock app starts
-  the plugin with a minimal `PATH`, so the plugin also searches `/opt/homebrew/bin`
-  and `/usr/local/bin` for `herdr`.
+  the plugin with a minimal `PATH`, so the plugin must also search `/opt/homebrew/bin`
+  and `/usr/local/bin` for `herdr` (milestone 5; not implemented yet).
 - Framing: one JSON object per line. Request: `{"id","method","params"}`. Response:
   `{"id","result"}`, or an error.
 - Ordinary requests: the server closes the connection after replying. Open a new
@@ -253,7 +277,18 @@ Slot numbering is logical (0..n), and each front end maps it to physical keys:
   becomes `idle`.
 - `agent.list` fields used: `pane_id`, `workspace_id`, `tab_id`, `agent`, `agent_status`,
   `cwd`, `terminal_title_stripped`, `focused`.
-- Focus: `agent.focus {"target": "<pane_id>"}`.
+- Focus: `agent.focus {"target": "<pane_id>"}`. Unknown targets return the error
+  `{"code": "agent_not_found"}`. Focusing turns `done` into `idle` and emits `pane_focused`.
+- Request `id` **must be a string**. A numeric id gets `invalid_request`.
+- Event names are mixed: `pane.agent_status_changed` (dot), but `pane_created`, `pane_closed`,
+  `pane_agent_detected`, `pane_focused`, `workspace_closed` (underscore). The parser
+  normalises dots to underscores.
+- Closing a workspace emits only `workspace_closed`, with no `pane_closed` for its panes. Any
+  topology event (pane/tab/workspace created, closed, moved, agent detected or released) triggers a full
+  resync, so this case is covered too.
+- An agent going `blocked` → `idle` while unseen is reported as `done`.
+- `pane.report_agent` drives agent states in a throwaway session. The live integration tests
+  (`tests/integration/test_herdr_live.py`) use it against `herdr --session <tmp> server`.
 
 ### Key appearance (64×64)
 
@@ -410,7 +445,9 @@ run = "cd ~/Projects/foo && make"
 | `herdr_core/client.py` | Socket RPC, subscription stream, reconnect/backoff |
 | `herdr_core/store.py` | AgentStore, slots, paging |
 | `herdr_core/render.py` | Pillow key renderer, frame cache (PNG bytes), bundled DejaVu Sans |
-| `herdr_core/session.py` | HerdrSession (start/stop/press/on_slot_image), animation ticker |
+| `herdr_core/session.py` | HerdrSession (start/stop/press/next_page → on_view(SessionView)) |
+| `herdr_core/paging.py`, `backoff.py`, `events.py`, `models.py`, `errors.py`, `theme.py`, `socket_path.py` | Page layout, reconnect delays, typed events, value objects, typed errors, herdr symbols, socket discovery |
+| `herdr_core/console.py` | `python -m herdr_core.console`: live agent states in the terminal |
 | `herdr_core/raise_window.py` | Per-OS raise command runner |
 | `herdr_core/config.py` | Config loading |
 | `linux/daemon.py` | Pages (home/herdr), Device SDK wrapper, launcher |
@@ -447,8 +484,9 @@ flowchart LR
 
 ## Milestones
 
-1. **herdr_core**: client, store, session, with a console printer of live agent states
-   and tests against a fake socket. No device needed.
+1. ✅ **herdr_core**: client, store, paging, session, raiser, config, and a console printer
+   (`scripts/run-console.sh`). Tests use a fake socket server, in-memory fakes, shared port
+   contracts and live tests against a throwaway herdr session. 99 % branch coverage.
 2. **render.py**: render keys to PNG files for visual review.
 3. **Linux daemon**: home page from TOML (run/app/herdr keys), Herdr mode with Exit,
    agent keys, focus + raise.
