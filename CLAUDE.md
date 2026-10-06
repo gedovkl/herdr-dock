@@ -1,7 +1,8 @@
 # herdr-dock
 
 Shows herdr coding agents as live keys on a StreamDock M18. `DESIGN.md` is the source of truth
-for architecture, milestones and open items. Read it before changing anything.
+for architecture, milestones and open items. Read it before changing anything. `CHANGELOG.md`
+records what was built and verified. Add to it when you finish something notable.
 
 ## Rules (binding, from DESIGN.md "Engineering rules")
 

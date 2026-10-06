@@ -25,7 +25,7 @@ from herdr_core.session import HerdrSession
 from herdr_core.socket_path import resolve_socket_path
 from linux.config import HERDR_WINDOW, KEY_COUNT, LinuxConfig, load_linux_config
 from linux.controller import DockController
-from linux.device import DeviceError, DeviceInput, M18Device, StreamDockSdk
+from linux.device import DeviceInput, M18Device, StreamDockSdk
 from linux.hyprland import HerdrWindowRaiser, WindowFocuser
 from linux.launcher import ShellLauncher
 
@@ -53,14 +53,17 @@ class Daemon:
         controller: DockController,
         *,
         poll_seconds: float,
+        alive_seconds: float = 0.25,
         sleep: Sleep = asyncio.sleep,
     ) -> None:
         self._device = device
         self._controller = controller
         self._poll = poll_seconds
+        self._alive = alive_seconds
         self._sleep = sleep
         self._inputs: asyncio.Queue[DeviceInput] = asyncio.Queue()
-        self._warned = False
+        self._last_error = ""
+        self._announced_wait = False
 
     def on_input(self, event: DeviceInput) -> None:
         """Device callback (already on the event loop)."""
@@ -76,10 +79,10 @@ class Daemon:
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await task
-            await self._controller.shutdown()
-            with contextlib.suppress(DeviceError):
-                if self._device.connected:
-                    await self._device.clear()
+            with contextlib.suppress(Exception):
+                await self._controller.shutdown()
+            with contextlib.suppress(Exception):
+                await self._device.clear()
             await self._device.shutdown()
 
     async def _handle_inputs(self) -> None:
@@ -91,24 +94,37 @@ class Daemon:
                 log.exception("handling %s failed", event)
 
     async def _watch_device(self) -> None:
+        """Connect when the M18 appears; notice an unplug within `alive_seconds`.
+
+        Never raises: a missing, unplugged or inaccessible dock is a normal state, logged once.
+        """
         while True:
             try:
-                await self._check_device()
-            except DeviceError as exc:
-                if not self._warned:
-                    log.error("%s", exc)
-                    self._warned = True
+                if self._device.connected:
+                    await self._check_alive()
+                    await self._sleep(self._alive)
+                    continue
+                await self._try_connect()
+            except Exception as exc:  # keep watching whatever the SDK throws
+                self._log_once(f"M18: {exc}")
             await self._sleep(self._poll)
 
-    async def _check_device(self) -> None:
-        if self._device.connected:
-            if not await self._device.present():
-                log.warning("M18 unplugged")
-                await self._device.disconnect()
-            return
+    async def _check_alive(self) -> None:
+        if not self._device.alive():
+            await self._device.disconnect(removed=True)
+
+    async def _try_connect(self) -> None:
         if await self._device.connect():
-            self._warned = False
+            self._last_error, self._announced_wait = "", False
             await self._controller.redraw()
+        elif not self._announced_wait:
+            log.info("waiting for the M18 to be plugged in")
+            self._announced_wait = True
+
+    def _log_once(self, message: str) -> None:
+        if message != self._last_error:
+            log.error("%s", message)
+            self._last_error = message
 
 
 def build(
@@ -146,6 +162,7 @@ def build(
         layout=layout,
         buttons=dict(linux.buttons),
         focuser=WindowFocuser(),
+        on_enter=HerdrWindowRaiser().raise_herdr_window if linux.focus_herdr_on_enter else None,
     )
     daemon = Daemon(device, controller, poll_seconds=linux.poll_seconds)
     holder.append(daemon.on_input)

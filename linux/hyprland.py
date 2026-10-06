@@ -157,6 +157,9 @@ class HerdrWindowRaiser:
         self._processes = processes
 
     async def raise_window(self, agent: Agent) -> None:
+        await self.raise_herdr_window()
+
+    async def raise_herdr_window(self) -> None:
         windows = await self._hyprland.windows()
         if windows is None:
             return

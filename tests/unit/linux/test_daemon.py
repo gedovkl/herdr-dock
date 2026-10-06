@@ -36,6 +36,7 @@ def built(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Daemon, Fake
     monkeypatch.setattr(daemon_module, "StreamDockSdk", lambda: sdk)
     monkeypatch.setattr("linux.device.os.access", lambda path, mode: True)
     daemon, _ = build(Config(), LinuxConfig(poll_seconds=0.01), tmp_path / "h.sock", tmp_path)
+    daemon._device._exists = lambda path: bool(sdk.devices)  # node exists while plugged in
     yield daemon, sdk
     os.chdir(cwd)
 
@@ -49,8 +50,9 @@ async def _until(predicate: object, timeout: float = 2.0) -> None:
 
 
 async def test_connects_draws_home_handles_presses_and_cleans_up(
-    built: tuple[Daemon, FakeSdk],
+    built: tuple[Daemon, FakeSdk], caplog: pytest.LogCaptureFixture
 ) -> None:
+    caplog.set_level("INFO")
     daemon, sdk = built
     sdk.plug(0x5548, 0x1000)
     stop = asyncio.Event()
@@ -64,20 +66,26 @@ async def test_connects_draws_home_handles_presses_and_cleans_up(
     stop.set()
     await task
     assert sdk.created[0].calls[-3:] == [("clear",), ("refresh",), ("close",)]
+    assert "waiting for the M18" not in caplog.text
 
 
-async def test_replug_redraws(built: tuple[Daemon, FakeSdk]) -> None:
+async def test_replug_redraws(
+    built: tuple[Daemon, FakeSdk], caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level("INFO")
     daemon, sdk = built
     sdk.plug(0x5548, 0x1000)
     stop = asyncio.Event()
     task = asyncio.create_task(daemon.run(stop))
     await _until(lambda: len(sdk.created) == 1 and sdk.created[0].images)
     sdk.unplug()
-    await _until(lambda: ("close",) in sdk.created[0].calls)
+    await _until(lambda: ("close-removed",) in sdk.created[0].calls)  # no write to a removed device
+    await _until(lambda: "waiting for the M18" in caplog.text)
     sdk.plug(0x5548, 0x1000)
     await _until(lambda: len(sdk.created) == 2 and len(sdk.created[1].images) == 15)
     stop.set()
     await task
+    assert caplog.text.count("waiting for the M18") == 1  # one message per unplug
 
 
 async def test_device_errors_are_logged_once(
@@ -155,3 +163,14 @@ async def test_serve_stops_on_signal(built: tuple[Daemon, FakeSdk]) -> None:
     await asyncio.sleep(0.02)
     os.kill(os.getpid(), signal.SIGTERM)
     await asyncio.wait_for(task, 2.0)
+
+
+def test_focus_on_enter_wiring(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    cwd = os.getcwd()
+    try:
+        _, on = build(Config(), LinuxConfig(), tmp_path / "h.sock", tmp_path)
+        _, off = build(Config(), LinuxConfig(focus_herdr_on_enter=False), tmp_path / "h", tmp_path)
+    finally:
+        os.chdir(cwd)
+    assert on._on_enter is not None
+    assert off._on_enter is None

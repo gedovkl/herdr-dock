@@ -101,10 +101,11 @@ async def test_failed_keys_are_retried(rig: Rig, caplog: pytest.LogCaptureFixtur
     rig.presenter.update(view(S.IDLE))
     await rig.presenter.push()
     assert "showing key 1 failed" in caplog.text
+    assert rig.surface.calls == [0, 1]  # stops at the failing key instead of hammering on
     rig.surface.fail_keys.clear()
     rig.surface.calls.clear()
     await rig.presenter.push()
-    assert rig.surface.calls == [1]
+    assert rig.surface.calls == [1, 2, 3]  # the rest is sent on the next push
 
 
 async def _until(predicate: object) -> None:

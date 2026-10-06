@@ -40,7 +40,8 @@ linux = "herdr-window"
 brightness = 70
 device_ids = ["5548:1000", "6603:1009", "6603:1012"]   # VID:PID, tried in order
 app_launcher = "uwsm-app -- {app}"                     # used by `app = ...` home keys
-poll_seconds = 2                                       # replug detection
+poll_seconds = 2                                       # how often to look for the M18
+focus_herdr_on_enter = true                            # Herdr button also raises the herdr window
 
 # The three buttons under the screen: "herdr" (enter/leave Herdr mode), "page" (next agent page)
 # or "none"
@@ -51,7 +52,8 @@ right = "page"
 
 # Home page. key = 1..15, left to right, top to bottom. Each key does exactly one thing:
 #   herdr = true       enter Herdr mode
-#   app = "<id>"       launch a desktop app through app_launcher
+#   app = "<id>"       launch through app_launcher: a command on PATH, or a desktop entry ID
+#                      including ".desktop" (e.g. "sublime_merge.desktop")
 #   run = "<command>"  run a shell command (detached)
 # Optional:
 #   focus = "<regex>"  if a Hyprland window whose class matches exists, focus it instead of

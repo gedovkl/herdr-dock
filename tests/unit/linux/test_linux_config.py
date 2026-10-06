@@ -28,6 +28,7 @@ brightness = 40
 device_ids = ["5548:1000", "6603:1009"]
 app_launcher = "gtk-launch {app}"
 poll_seconds = 1
+focus_herdr_on_enter = false
 [linux.buttons]
 middle = "herdr"
 right = "none"
@@ -55,6 +56,8 @@ symbol = "⚙"
     assert config.device_ids == ((0x5548, 0x1000), (0x6603, 0x1009))
     assert config.app_launcher == "gtk-launch {app}"
     assert config.poll_seconds == 1.0
+    assert config.focus_herdr_on_enter is False
+    assert LinuxConfig().focus_herdr_on_enter is True
     assert config.buttons == {"left": "herdr", "middle": "herdr", "right": "none"}
     assert config.home == (
         HomeKey(1, "herdr", herdr=True),
@@ -97,6 +100,7 @@ def test_invalid_toml(tmp_path: Path) -> None:
         ({"linux": {"brightness": 101}}, "brightness must be 0-100"),
         ({"linux": {"brightness": True}}, "brightness"),
         ({"linux": {"poll_seconds": 0}}, "poll_seconds"),
+        ({"linux": {"focus_herdr_on_enter": "yes"}}, "focus_herdr_on_enter"),
         ({"linux": {"app_launcher": "gtk-launch"}}, "containing {app}"),
         ({"linux": {"device_ids": "5548:1000"}}, "must be a list"),
         ({"linux": {"device_ids": ["5548"]}}, "VID:PID"),

@@ -39,8 +39,8 @@ class FakeSdkDevice:
     def clearAllIcon(self) -> None:
         self.calls.append(("clear",))
 
-    def close(self) -> None:
-        self.calls.append(("close",))
+    def close(self, notify: bool = True) -> None:
+        self.calls.append(("close",) if notify else ("close-removed",))
         if self.fail_close:
             raise OSError("already gone")
 

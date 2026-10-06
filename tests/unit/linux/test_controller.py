@@ -199,3 +199,20 @@ async def test_redraw_in_herdr_mode_invalidates(rig: Rig) -> None:
     await rig.controller.redraw()
     await rig.presenter.push()
     assert len(rig.surface.calls) == 15
+
+
+async def test_entering_herdr_mode_raises_the_herdr_window(rig: Rig) -> None:
+    raised: list[str] = []
+
+    async def raise_herdr() -> None:
+        raised.append("herdr")
+        if len(raised) == 2:
+            raise RuntimeError("hyprctl gone")
+
+    rig.controller._on_enter = raise_herdr
+    await rig.controller.handle(KeyPressed(0))
+    assert raised == ["herdr"]
+    await rig.controller.handle(KeyPressed(0))  # exit
+    await rig.controller.handle(ButtonPressed("left"))  # enter again; raiser fails, mode still on
+    assert raised == ["herdr", "herdr"]
+    assert rig.controller.mode is Mode.HERDR

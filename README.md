@@ -8,7 +8,8 @@ agents blink. Press a key to switch herdr to that agent and bring its terminal w
 - **macOS:** a plugin for the official StreamDock app (not built yet, milestone 5)
 
 Both use the same `herdr_core` package. See [DESIGN.md](DESIGN.md) for the architecture,
-engineering rules (SOLID, ≥ 80 % test coverage) and milestones.
+engineering rules (SOLID, ≥ 80 % test coverage) and milestones, and [CHANGELOG.md](CHANGELOG.md)
+for what was built and what was learned about herdr and the M18 along the way.
 
 **Status:** Linux is done: the daemon works on the M18 and runs as a systemd user service
 (milestones 1–4). The macOS plugin (milestone 5) is still to come.
@@ -21,9 +22,26 @@ engineering rules (SOLID, ≥ 80 % test coverage) and milestones.
   more than 14 agents, key 15 becomes the pager (`▶ 1/2`).
 - **Buttons under the screen:** left enters or leaves Herdr mode, right shows the next page of
   agents, and middle does nothing. All three are configurable.
-- herdr is only contacted while Herdr mode is on.
+- herdr is only contacted while Herdr mode is on. Entering Herdr mode also brings the herdr
+  window to the front (`focus_herdr_on_enter`).
+- The dock can be unplugged and replugged at any time. The daemon keeps running, logs
+  "waiting for the M18", and redraws when the dock comes back. It also starts fine with no
+  dock plugged in.
 
 ## Setup on Linux
+
+**Short version**, once the prerequisites are in place:
+
+```bash
+git clone https://github.com/gedovkl/herdr-dock.git ~/Projects/herdr-dock
+git clone https://github.com/MiraboxSpace/StreamDock-Device-SDK.git ~/Projects/StreamDock-Device-SDK
+cd ~/Projects/herdr-dock
+scripts/setup.sh                 # Python venv + dependencies + SDK link
+scripts/install-linux.sh --udev  # device access for your user (sudo), then replug the M18
+scripts/install-linux.sh         # install + start the systemd user service
+```
+
+The steps below explain each part.
 
 Tested on Arch (Omarchy) with Hyprland 0.56, herdr 0.8.2 and a VSDinside StreamDock M18
 (USB `5548:1000`).
@@ -105,6 +123,7 @@ Every setting is documented in [`config.example.toml`](config.example.toml). The
 |---------|--------------|
 | `[[home]]` | Home-page keys: `key = 1..15` plus exactly one of `herdr = true`, `app = "<desktop id>"` or `run = "<shell command>"`. Optional `label`, `symbol`, `icon = "<path>"`, and `focus = "<window class regex>"` to focus an already-running window instead of starting another one |
 | `[linux.buttons]` | `left`/`middle`/`right` → `"herdr"`, `"page"` or `"none"` |
+| `[linux] focus_herdr_on_enter` | `true` (default): entering Herdr mode also brings the herdr window to the front (Hyprland) |
 | `[raise] linux` | `"herdr-window"` (default): focus the window the herdr client runs in, via Hyprland. Any other value is a shell command (`{pane_id}`, `{cwd}`, … are filled in; write literal braces as `{{ }}`). Set `enabled = false` to never raise |
 | `label` | Text under the symbol: `"cwd"` (folder), `"title"` or `"name"` |
 | `attention` | Statuses that blink or pulse: `["blocked"]` by default; add `"done"` to make finished work pulse until you look at it |
@@ -113,7 +132,7 @@ Every setting is documented in [`config.example.toml`](config.example.toml). The
 
 Restart the daemon after changing the config (`systemctl --user restart herdr-dock` once it runs as a service).
 
-Example: a browser key that focuses the running browser, or starts it if there isn't one:
+#### Home keys for apps: focus if running, otherwise launch
 
 ```toml
 [[home]]
@@ -121,8 +140,33 @@ key = 2
 label = "Browser"
 icon = "/usr/share/icons/hicolor/128x128/apps/chromium.png"
 app = "chromium"
-focus = "^chromium$"   # window class, as shown by `hyprctl clients`
+focus = "^chromium$"
+
+[[home]]
+key = 3
+label = "Merge"
+icon = "/usr/share/icons/hicolor/128x128/apps/sublime-merge.png"
+app = "sublime_merge.desktop"
+focus = "^sublime_merge$"
+
+[[home]]
+key = 4
+label = "Zed"
+icon = "/usr/share/icons/hicolor/512x512/apps/zed.png"
+app = "dev.zed.Zed.desktop"
+focus = "^dev\\.zed\\.Zed$"
 ```
+
+Where the values come from:
+
+- **`app`** is passed to `uwsm-app --`. It's either a command on your `PATH` (`chromium`) or a
+  desktop entry ID **including `.desktop`** (`sublime_merge.desktop`). Use the desktop ID when the
+  binary isn't on `PATH`. List the IDs with `ls /usr/share/applications ~/.local/share/applications`.
+- **`focus`** is a regex matched against Hyprland window **classes**. With the app open, run
+  `hyprctl clients -j | jq -r '.[].class'`. Anchor it with `^…$`, so `^chromium$` doesn't also
+  match Chromium web apps (`chrome-…`). In TOML strings, write a regex `\.` as `\\.`.
+- **`icon`** is any image file. App icons usually live in `/usr/share/icons/hicolor/<size>/apps/`.
+  Without an icon, use `symbol = "<glyph>"`.
 
 ### 7. Start automatically
 
@@ -143,6 +187,15 @@ scripts/install-linux.sh --uninstall    # remove the service
 
 Re-run `scripts/install-linux.sh` if you move the repo or recreate `.venv`.
 
+### Updating
+
+```bash
+cd ~/Projects/herdr-dock
+git pull
+scripts/setup.sh                       # picks up new dependencies
+systemctl --user restart herdr-dock
+```
+
 ### Troubleshooting
 
 | Symptom | Fix |
@@ -152,6 +205,8 @@ Re-run `scripts/install-linux.sh` if you move the repo or recreate `.venv`.
 | Agent keys say `herdr offline` | herdr isn't running, or it uses a different socket. Check `herdr status server`, and set `herdr_socket` in the config if needed |
 | Pressing an agent switches herdr but doesn't raise the window | You're not on Hyprland, or the herdr client isn't in a Hyprland window. Set `[raise] linux` to your own command |
 | `tools/probe_m18.py` or the hardware tests can't open the device | Only one process can drive the M18. Stop the daemon first: `systemctl --user stop herdr-dock` |
+| An `app = …` home key does nothing | `uwsm-app` couldn't resolve the name. Use the desktop ID with `.desktop` (see step 6), and check `journalctl --user -u herdr-dock` |
+| Dock was unplugged | Nothing to do: plug it back in and it redraws within about 2 s |
 | Service doesn't start at login | `systemctl --user status herdr-dock`. It needs `graphical-session.target`, which uwsm and most Wayland session managers provide |
 
 ## Setup on macOS

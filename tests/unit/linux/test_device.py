@@ -46,6 +46,7 @@ def test_decode_packet(data: bytes, expected: DeviceInput | None) -> None:
 async def rig(tmp_path: Path) -> AsyncIterator[tuple[FakeSdk, M18Device, list[DeviceInput]]]:
     cwd = os.getcwd()
     sdk, inputs = FakeSdk(), []
+    present = {"/dev/hidraw7", "/dev/hidraw9"}
     device = M18Device(
         sdk,
         [(0x5548, 0x1000)],
@@ -53,6 +54,7 @@ async def rig(tmp_path: Path) -> AsyncIterator[tuple[FakeSdk, M18Device, list[De
         inputs.append,
         brightness=55,
         access=lambda path: True,
+        exists=lambda path: path in present,
     )
     yield sdk, device, inputs
     await device.shutdown()
@@ -129,10 +131,9 @@ async def test_image_failure_and_not_connected(
     rig: tuple[FakeSdk, M18Device, list[DeviceInput]],
 ) -> None:
     sdk, device, _ = rig
-    with pytest.raises(DeviceError, match="not connected"):
-        await device.show(0, b"x")
-    with pytest.raises(DeviceError, match="not connected"):
-        await device.clear()
+    await device.show(0, b"x")  # no device: silently dropped, redrawn on reconnect
+    await device.clear()
+    assert sdk.created == []
     sdk.plug(0x5548, 0x1000)
     await device.connect()
     sdk.created[0].image_result = -1
@@ -154,14 +155,51 @@ async def test_presence_and_disconnect(rig: tuple[FakeSdk, M18Device, list[Devic
     sdk.created[0].fail_close = True
     await device.disconnect()
     assert not device.connected
+    assert sdk.created[0].calls[-1] == ("close",)  # intentional close notifies the device
     await device.disconnect()  # idempotent
+
+
+async def test_unplugged_device_gets_no_more_writes(tmp_path: Path) -> None:
+    """The SDK can kill the process natively when writing to a removed device."""
+    cwd = os.getcwd()
+    sdk, present = FakeSdk(), {"/dev/hidraw7"}
+    sdk.plug(0x5548, 0x1000)
+    device = M18Device(
+        sdk,
+        [(0x5548, 0x1000)],
+        tmp_path,
+        lambda e: None,
+        access=lambda p: True,
+        exists=lambda p: p in present,
+    )
+    try:
+        await device.connect()
+        assert device.alive()
+        present.clear()  # unplugged: the hidraw node vanished
+        assert not device.alive()
+        calls_before = len(sdk.created[0].calls)
+        await device.show(0, b"x")
+        await device.clear()
+        assert not device.connected
+        new_calls = sdk.created[0].calls[calls_before:]
+        assert new_calls == [("close-removed",)]  # closed without the disconnect write
+        assert not device.alive()
+        await device.disconnect(removed=True)  # already closed: nothing happens
+    finally:
+        await device.shutdown()
+        os.chdir(cwd)
 
 
 async def test_tries_ids_in_order(tmp_path: Path) -> None:
     sdk = FakeSdk()
     sdk.plug(0x6603, 0x1009, "/dev/second")
     device = M18Device(
-        sdk, [(0x5548, 0x1000), (0x6603, 0x1009)], tmp_path, lambda e: None, access=lambda p: True
+        sdk,
+        [(0x5548, 0x1000), (0x6603, 0x1009)],
+        tmp_path,
+        lambda e: None,
+        access=lambda p: True,
+        exists=lambda p: True,
     )
     cwd = os.getcwd()
     try:

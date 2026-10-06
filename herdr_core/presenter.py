@@ -48,6 +48,7 @@ class DeckPresenter:
         self._shown: dict[int, _Shown] = {}
         self._dirty = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
+        self._failing = False
 
     @property
     def faces(self) -> tuple[Face, ...]:
@@ -88,9 +89,13 @@ class DeckPresenter:
             png = self._renderer.render(*shown)
             try:
                 await self._surface.show(key, png)
-            except Exception:
-                log.exception("showing key %s failed", key)
-                continue
+            except Exception as exc:
+                # Log once per failure streak; unsent keys are retried on the next push.
+                if not self._failing:
+                    log.warning("showing key %s failed: %s", key, exc)
+                    self._failing = True
+                return animated or self._animator.effect(face) is not Effect.NONE
+            self._failing = False
             self._shown[key] = shown
         return animated
 

@@ -524,7 +524,9 @@ flowchart LR
 |---------|----------|
 | herdr not running / restarted | Exponential backoff reconnect (0.5 s → 10 s), keys show offline, full resync on reconnect |
 | Missed events | Periodic `agent.list` resync every `resync_seconds` while in Herdr mode |
-| Device unplugged/replugged (Linux) | Hot-plug callback → reopen, reapply brightness, redraw current page |
+| Device absent at start (Linux) | Daemon runs normally and logs "waiting for the M18" once. It polls every `poll_seconds` and draws the current mode when the dock appears |
+| Device unplugged mid-run (Linux) | The hidraw node is checked every 0.25 s and before **every** write. On removal the device is closed *without* the SDK's disconnect write (writing to a removed device can kill the process natively), and later key updates are dropped. On replug: reconnect, then redraw the current mode. Verified on the M18 while animating: same PID, no restart, clean log |
+| Device or SDK errors | The watcher never dies: errors are logged once per distinct message. Presenter draw failures are logged once per failure streak and retried on the next push |
 | StreamDock app restarts (macOS) | Plugin process restarts. Contexts reappear through `willAppear` and the session restarts |
 | Rapid status flapping | Coalesce redraws per key (~50 ms debounce) |
 | Leaving Herdr mode mid-request | `stop()` cancels in-flight tasks. Late events are ignored |

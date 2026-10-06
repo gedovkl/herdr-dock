@@ -1,0 +1,94 @@
+# Changelog
+
+What was built, in order, and what was learned along the way. Architecture and rationale live in
+[DESIGN.md](DESIGN.md); setup is in [README.md](README.md).
+
+## Linux hardening and home keys
+
+- **Unplug-safe device handling.** The vendor SDK can kill the process natively when it writes to
+  a removed device (its own `close()` comment says so). The daemon now:
+  - checks that the hidraw node exists before **every** write and every 0.25 s while connected;
+  - closes a removed device with `close(notify=False)`, which skips the disconnect write;
+  - drops key updates while the dock is absent and redraws everything on replug;
+  - logs "waiting for the M18 to be plugged in" once per absence, never floods;
+  - starts normally with no dock plugged in.
+
+  Verified on the M18 by unplugging mid-animation: same PID, no restart, clean log.
+- **Presenter**: draw failures are logged once per failure streak and retried on the next push,
+  instead of logging a traceback for every key on every tick.
+- **`focus = "<window class regex>"` on home keys**: focus the most recently used matching
+  Hyprland window, and launch `app`/`run` only if there is none. Used for the Browser, Merge
+  and Zed keys.
+- **`[linux] focus_herdr_on_enter`** (default `true`): the Herdr button also brings the herdr window
+  to the front.
+- `app = "<id>.desktop"` works for apps whose binary isn't on `PATH` (`uwsm-app` resolves desktop IDs).
+
+## Milestone 4: systemd user service
+
+- `linux/herdr-dock.service` is bound to `graphical-session.target` (uwsm provides it together with
+  `HYPRLAND_INSTANCE_SIGNATURE` and `WAYLAND_DISPLAY`) and restarts on failure.
+- `scripts/install-linux.sh` installs and starts it, `--uninstall` removes it, and `--udev`
+  installs the device rule. It refuses to run while a hand-started daemon holds the dock.
+
+## Milestone 3: Linux daemon on the M18
+
+- **Hardware probe** (`tools/probe_m18.py`) on the actual unit:
+  - USB `5548:1000` "HOTSPOTEKUSB HID DEMO", firmware `V3.VSDM18_HBOE.02.017`. It is a
+    VSDinside-branded M18 and **missing from the SDK's product table**, so the daemon enumerates
+    configured IDs itself.
+  - Key images: `set_key_image(n)`, with n = 1 top-left, row by row. Presses: raw code n for
+    the same key. The SDK's *decoded* press numbers are wrong (raw 1 → "KEY_11"), so presses are
+    decoded from raw packets.
+  - Three buttons under the screen send `0x25`, `0x30`, `0x31`.
+  - 15 keys plus refresh take about 10–13 ms, so animation is cheap.
+  - **Without permissions the SDK reports success anyway** (`open()` returns `True`, image writes
+    return 0). The daemon checks `os.access()` itself.
+- **udev rule** `linux/70-herdr-dock.rules`: `uaccess` for the M18 IDs only, so the logged-in user
+  gets access. The SDK's own rule makes every StreamDock world-writable (`0666`).
+- **Daemon**: home page from `[[home]]` (herdr / app / run keys), Herdr mode with Exit on key 1,
+  agent keys 2–15, pager on overflow, extra buttons, and replug handling.
+- **Raise the herdr window** (`HerdrWindowRaiser`): walks `/proc` from the attached herdr client up
+  to the process that owns a Hyprland window, then focuses it by address. This works for any
+  terminal. Hyprland 0.56 needs the Lua dispatcher (`hl.dsp.focus({ window = "address:…" })`),
+  with the old `focuswindow` syntax as a fallback.
+- **herdr quirk found**: `pane_focused` events replay recent focus history to every new subscriber
+  (about 10/s, across tabs) while `agent.list` stays steady. This made the focus border flicker
+  when entering Herdr mode. The session now treats focus events as a hint and re-reads focus from
+  `agent.list`, throttled to every 0.5 s.
+- `config.example.toml` documents every setting and is checked by a test.
+
+## Milestone 2: key rendering
+
+- `faces.py` (what each key shows) → `animation.py` (blink/spin/pulse as a pure function of
+  time, so blinks stay in phase) → `render.py` (Pillow, cached PNGs) → `presenter.py` (sends only
+  changed keys; ticks only while something animates).
+- Symbols and colour roles taken from herdr's source (`status_icon` and `status_color` in
+  `src/client/shell.rs`): `×` blocked/red, `◐` working/yellow, `✓` done/teal, `○` idle/green,
+  `·` unknown. Idle and unknown keys are dark with a coloured symbol, so full colour means activity.
+- Bundled DejaVu Sans and DejaVu Sans Condensed Bold (with licence), so keys look the same on every machine.
+- `scripts/render-preview.sh` writes every face and frame plus a contact sheet.
+
+## Milestone 1: herdr core
+
+- **herdr socket API** (protocol 20, herdr 0.8.2), verified against a throwaway
+  `herdr --session <name> server`:
+  - NDJSON over a Unix socket. One request per connection, except `events.subscribe`.
+  - Request `id` must be a **string**.
+  - Event names mix `pane.agent_status_changed` (dot) with `pane_created` (underscore).
+  - Status subscriptions need a `pane_id`, so the session resubscribes when the agent set changes.
+  - Closing a workspace emits only `workspace_closed` (no `pane_closed`), so any topology event
+    triggers a full resync.
+  - `agent.focus` marks `done` as seen (→ `idle`). blocked → idle while unseen becomes `done`.
+- `HerdrSession`: list → subscribe → list again (closes the gap) → follow events. Also periodic
+  resync, reconnect with backoff, stable key slots, and paging.
+- `scripts/run-console.sh` shows live agent states without a device.
+
+## Project setup
+
+- Design document with Mermaid diagrams, binding engineering rules (SOLID, ≥ 80 % branch coverage,
+  fakes only in unit tests, opt-in `herdr_live`/`hardware` tests), `CLAUDE.md` for future sessions.
+- `scripts/` for setup, check, test, lint, format, run, install and build (bash 3.2 compatible
+  for macOS).
+- Researched the StreamDock app plugin SDK for macOS. A plugin can only draw on keys holding its
+  actions and can't switch pages (SDK issue #33), so on macOS Herdr mode will be a folder in the
+  StreamDock app (milestone 5).

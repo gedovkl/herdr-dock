@@ -66,7 +66,7 @@ class SdkDevice(Protocol):
     def set_key_image(self, key: int, path: str) -> Any: ...
     def refresh(self) -> Any: ...
     def clearAllIcon(self) -> Any: ...
-    def close(self) -> Any: ...
+    def close(self, notify: bool = True) -> Any: ...
     def set_raw_read_callback(self, callback: Callable[[Any, Any], None]) -> None: ...
 
 
@@ -104,6 +104,7 @@ class M18Device:
         *,
         brightness: int = 70,
         access: Callable[[str], bool] = lambda path: os.access(path, os.R_OK | os.W_OK),
+        exists: Callable[[str], bool] = lambda path: os.path.exists(path),
     ) -> None:
         self._sdk = sdk
         self._ids = tuple(ids)
@@ -111,6 +112,7 @@ class M18Device:
         self._on_input = on_input
         self._brightness = brightness
         self._access = access
+        self._exists = exists
         self._device: SdkDevice | None = None
         self._path = ""
         self._executor = concurrent.futures.ThreadPoolExecutor(1, thread_name_prefix="m18")
@@ -129,14 +131,20 @@ class M18Device:
         """Whether the opened device (or any matching one, if none is open) is plugged in."""
         return bool(await self._call(self._present))
 
+    def alive(self) -> bool:
+        """Cheap check that the open device's node still exists (it vanishes on unplug)."""
+        return self._device is not None and self._exists(self._path)
+
     async def show(self, key: int, png: bytes) -> None:
+        """Draw a key. While no device is connected this is a no-op; reconnecting redraws."""
         await self._call(self._show, key, png)
 
     async def clear(self) -> None:
         await self._call(self._clear)
 
-    async def disconnect(self) -> None:
-        await self._call(self._disconnect)
+    async def disconnect(self, *, removed: bool = False) -> None:
+        """Close the device. `removed`: it was unplugged, so send it nothing more."""
+        await self._call(self._disconnect, removed)
 
     async def shutdown(self) -> None:
         await self.disconnect()
@@ -189,9 +197,11 @@ class M18Device:
         return False
 
     def _show(self, key: int, png: bytes) -> None:
-        device = self._require()
         if not 0 <= key < KEY_COUNT:
             raise ValueError(f"key {key} out of range")
+        device = self._writable()
+        if device is None:
+            return
         path = self._workdir / f"key{key}.png"
         path.write_bytes(png)
         if device.set_key_image(key + 1, str(path)) == -1:
@@ -199,24 +209,31 @@ class M18Device:
         device.refresh()
 
     def _clear(self) -> None:
-        device = self._require()
-        device.clearAllIcon()
-        device.refresh()
+        device = self._writable()
+        if device is not None:
+            device.clearAllIcon()
+            device.refresh()
 
-    def _disconnect(self) -> None:
+    def _disconnect(self, removed: bool = False) -> None:
         device, self._device, self._path = self._device, None, ""
         if device is None:
             return
         try:
             device.set_raw_read_callback(lambda *_: None)
-            device.close()
+            # After a physical removal the SDK's "disconnect" write can kill the process
+            # natively (see the SDK's close()), so only send it for an intentional close.
+            device.close(notify=not removed)
         except Exception:
             log.debug("error closing M18", exc_info=True)
-        log.info("M18 disconnected")
+        log.info("M18 %s", "unplugged" if removed else "disconnected")
 
-    def _require(self) -> SdkDevice:
+    def _writable(self) -> SdkDevice | None:
+        """The device if it's safe to write to it; never write to an unplugged device."""
         if self._device is None:
-            raise DeviceError("M18 not connected")
+            return None
+        if not self._exists(self._path):
+            self._disconnect(removed=True)
+            return None
         return self._device
 
     def _raw(self, _device: Any, data: Any) -> None:

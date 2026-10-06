@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import enum
 import logging
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Protocol
 
 from herdr_core.faces import EmptyFace, Face, KeyLayout, LauncherFace
@@ -58,6 +58,7 @@ class DockController:
         layout: KeyLayout,
         buttons: dict[str, str],
         focuser: Focuser,
+        on_enter: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         self._surface = surface
         self._renderer = renderer
@@ -68,6 +69,7 @@ class DockController:
         self._layout = layout
         self._buttons = buttons
         self._focuser = focuser
+        self._on_enter = on_enter
         self._mode = Mode.HOME
         self._home_shown: dict[int, Face] = {}
 
@@ -93,6 +95,11 @@ class DockController:
         self._presenter.invalidate()
         await self._presenter.start()
         await self._session.start()
+        if self._on_enter is not None:
+            try:
+                await self._on_enter()
+            except Exception:
+                log.warning("bringing the herdr window to the front failed", exc_info=True)
 
     async def exit_herdr(self) -> None:
         if self._mode is Mode.HOME:
