@@ -224,9 +224,17 @@ def test_build_widgets() -> None:
             HomeKey(1, "h", herdr=True),
             HomeKey(5, "", widget="clock"),
             HomeKey(10, "", widget="weather", latitude=1.0, longitude=2.0, refresh_minutes=2),
+            HomeKey(13, "", widget="pomodoro", work_minutes=50, rest_minutes=10),
+            HomeKey(14, "", widget="pomodoro", notify=False),
+            HomeKey(15, "", widget="timer"),
         )
     )
-    assert set(widgets) == {4, 9}
+    assert set(widgets) == {4, 9, 12, 13, 14}
+    from linux.widgets import PomodoroWidget, TimerWidget, desktop_notify
+
+    assert isinstance(widgets[12], PomodoroWidget) and widgets[12]._work == 3000
+    assert widgets[12]._notify is desktop_notify and widgets[13]._notify is None  # type: ignore[union-attr]
+    assert isinstance(widgets[14], TimerWidget)
     assert isinstance(widgets[4], ClockWidget)
     assert isinstance(widgets[9], WeatherWidget) and widgets[9].refresh_seconds == 120
 

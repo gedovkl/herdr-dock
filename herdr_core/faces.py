@@ -74,6 +74,27 @@ class WeatherFace:
     """The temperature in °C, for colouring; None before the first reading."""
 
 
+@dataclass(frozen=True, slots=True)
+class PomodoroFace:
+    """Stopped: a tomato. Running: phase, time left and progress through the phase."""
+
+    phase: str = "idle"
+    """"idle", "work" or "rest"."""
+    remaining: str = ""
+    progress: float = 0.0
+    """0.0 → 1.0 through the current phase."""
+
+
+@dataclass(frozen=True, slots=True)
+class TimerFace:
+    """Stopped: a stopwatch icon. Running: the elapsed time."""
+
+    elapsed: str = ""
+    """Empty while stopped."""
+    pulse: bool = False
+    """Alternates every second while running (a blinking dot)."""
+
+
 Face = (
     EmptyFace
     | OfflineFace
@@ -83,6 +104,8 @@ Face = (
     | LauncherFace
     | ClockFace
     | WeatherFace
+    | PomodoroFace
+    | TimerFace
 )
 
 

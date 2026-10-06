@@ -417,7 +417,7 @@ flowchart LR
 | `linux/device.py` | `M18Device` (a `KeySurface`): finds the M18 by configured IDs, checks access, drives the vendor SDK on one worker thread, decodes raw presses |
 | `linux/controller.py` | `DockController`: modes. HOME draws launcher keys and launches. HERDR runs session + presenter, with Exit on key 0. Extra buttons map to actions |
 | `linux/launcher.py` | `ShellLauncher`: detached `run` commands and `app` launches (`uwsm-app -- {app}`) |
-| `linux/widgets.py` | Live home keys: `ClockWidget` (strftime) and `WeatherWidget` (Open-Meteo, WMO code → glyph, keeps the last reading on failure) |
+| `linux/widgets.py` | Live home keys sharing `face()`/`press()`/`advance()`: `ClockWidget`, `WeatherWidget` (Open-Meteo, keeps the last reading on failure), `PomodoroWidget` (work/rest cycle computed from the start time, notifies on phase change) and `TimerWidget` (stopwatch) |
 | `linux/service.py` | Renders the systemd unit (quoted `ExecStart`, `%` escaped) |
 | `linux/power.py` | `LockMonitor` (Hyprland session lock via `hyprctl -j monitors`) and `SleepMonitor` (logind `PrepareForSleep` via `dbus-monitor`) |
 | `linux/hyprland.py` | `HerdrWindowRaiser`: focuses the window hosting the herdr client (walks `/proc` parents to a `hyprctl clients` pid) |
@@ -437,6 +437,9 @@ flowchart LR
   `refresh_minutes` (retrying after 60 s on failure) and also queues a tick. Ticks, redraws and
   presses share one queue, so they never interleave. The weather fetch is the daemon's only
   network access.
+  Pressable widgets (pomodoro, timer) take the press and redraw their key at once. Every tick
+  calls `advance()` on all widgets, even in Herdr mode, so pomodoro phase notifications aren't
+  missed. Phases are a pure function of `monotonic() - start`, so no timers drift.
 - **HERDR**: key 1 = Exit (`◀ herdr` + status dots), keys 2–15 = agents (key 15 = pager on
   overflow). Entering starts presenter + session. Exit stops the presenter first, so the
   session's final "offline" view never reaches the keys, then the session, then redraws home.

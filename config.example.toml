@@ -106,8 +106,19 @@ longitude = -71.4676
 units = "celsius"              # or "fahrenheit"
 refresh_minutes = 15
 
+[[home]]
+key = 13
+widget = "pomodoro"            # press: start, press again: stop
+work_minutes = 25
+rest_minutes = 5
+notify = true                  # desktop notification when work/rest switches
+
+[[home]]
+key = 14
+widget = "timer"               # stopwatch: press to start, press again to stop
+
 # [[home]]                       # example: a shell command
-# key = 5
+# key = 15
 # label = "Lock"
 # symbol = "⏻"
 # run = "omarchy-lock-screen"

@@ -247,3 +247,31 @@ def test_temperature_colours(celsius: float, colour: str) -> None:
     from herdr_core.theme import temperature_color
 
     assert temperature_color(celsius) == colour
+
+
+def test_pomodoro_and_timer_faces(renderer: KeyRenderer) -> None:
+    from herdr_core.faces import PomodoroFace, TimerFace
+    from herdr_core.theme import (
+        POMODORO_REST_COLOR,
+        POMODORO_WORK_COLOR,
+        STOPWATCH_RING,
+        TIMER_RUNNING_COLOR,
+        TOMATO_COLOR,
+        TOMATO_LEAF_COLOR,
+    )
+
+    def colours(face: object) -> set[tuple[int, int, int]]:
+        image = pixels(renderer.render(face))  # type: ignore[arg-type]
+        return {c for _, c in image.getcolors(4096) or []}
+
+    tomato = colours(PomodoroFace())
+    assert hex_to_rgb(TOMATO_COLOR) in tomato and hex_to_rgb(TOMATO_LEAF_COLOR) in tomato
+    assert hex_to_rgb(POMODORO_WORK_COLOR) in colours(PomodoroFace("work", "18:42", 0.3))
+    assert hex_to_rgb(POMODORO_REST_COLOR) in colours(PomodoroFace("rest", "3:10", 1.5))
+    assert colours(PomodoroFace("work", "25:00", 0.0))  # empty bar still renders
+    stopwatch = colours(TimerFace())
+    assert all(hex_to_rgb(c) in stopwatch for c in STOPWATCH_RING)
+    running = colours(TimerFace("12:07", pulse=True))
+    assert hex_to_rgb(TIMER_RUNNING_COLOR) in running
+    assert hex_to_rgb(POMODORO_WORK_COLOR) in running  # the pulsing dot
+    assert hex_to_rgb(POMODORO_WORK_COLOR) not in colours(TimerFace("12:08", pulse=False))

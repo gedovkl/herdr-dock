@@ -15,7 +15,7 @@ from herdr_core.config import ConfigError, default_config_path
 KEY_COUNT = 15
 BUTTON_NAMES = ("left", "middle", "right")
 BUTTON_ACTIONS = ("herdr", "page", "none")
-WIDGETS = ("clock", "weather")
+WIDGETS = ("clock", "weather", "pomodoro", "timer")
 UNITS = ("celsius", "fahrenheit")
 DEFAULT_DEVICE_IDS: tuple[tuple[int, int], ...] = (
     (0x5548, 0x1000),
@@ -48,6 +48,10 @@ class HomeKey:
     place: str = ""
     refresh_minutes: float = 15.0
     """How often the weather key fetches new conditions."""
+    work_minutes: float = 25.0
+    rest_minutes: float = 5.0
+    notify: bool = True
+    """Pomodoro: desktop notification (notify-send) when work/rest switches."""
 
     @property
     def index(self) -> int:
@@ -214,6 +218,18 @@ def _widget(entry: Mapping[str, Any], key: int) -> dict[str, Any]:
         return {}
     if widget not in WIDGETS:
         raise ConfigError(f"home key {key}: widget must be one of {', '.join(WIDGETS)}")
+    if widget == "timer":
+        return {"widget": widget}
+    if widget == "pomodoro":
+        notify = entry.get("notify", True)
+        if not isinstance(notify, bool):
+            raise ConfigError(f"home key {key}: notify must be true or false")
+        return {
+            "widget": widget,
+            "work_minutes": _minutes(entry, "work_minutes", 25, key),
+            "rest_minutes": _minutes(entry, "rest_minutes", 5, key),
+            "notify": notify,
+        }
     if widget == "clock":
         return {
             "widget": widget,
@@ -231,6 +247,13 @@ def _widget(entry: Mapping[str, Any], key: int) -> dict[str, Any]:
         "place": _text(entry, "place", key),
         "refresh_minutes": _refresh_minutes(entry, key),
     }
+
+
+def _minutes(entry: Mapping[str, Any], name: str, default: float, key: int) -> float:
+    value = entry.get(name, default)
+    if isinstance(value, bool) or not isinstance(value, int | float) or value <= 0:
+        raise ConfigError(f"home key {key}: {name} must be a positive number, got {value!r}")
+    return float(value)
 
 
 def _refresh_minutes(entry: Mapping[str, Any], key: int) -> float:

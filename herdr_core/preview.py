@@ -19,6 +19,8 @@ from herdr_core.faces import (
     LauncherFace,
     OfflineFace,
     PagerFace,
+    PomodoroFace,
+    TimerFace,
     WeatherFace,
 )
 from herdr_core.models import AgentStatus
@@ -45,6 +47,12 @@ SAMPLES: tuple[tuple[str, Face], ...] = (
     ("weather-thunder", WeatherFace("25°C", "thunder", "Nashua", 25.0)),
     ("weather-snow", WeatherFace("-12°C", "snow", "Somewhere long", -12.0)),
     ("weather-offline", WeatherFace("--", place="Nashua")),
+    ("pomodoro", PomodoroFace()),
+    ("pomodoro-work", PomodoroFace("work", "18:42", 0.25)),
+    ("pomodoro-rest", PomodoroFace("rest", "3:10", 0.6)),
+    ("timer", TimerFace()),
+    ("timer-running", TimerFace("12:07", pulse=True)),
+    ("timer-hours", TimerFace("1:02:33")),
     ("empty", EmptyFace()),
     ("offline", OfflineFace()),
 )

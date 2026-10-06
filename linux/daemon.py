@@ -29,7 +29,14 @@ from linux.device import DeviceInput, M18Device, StreamDockSdk
 from linux.hyprland import HerdrWindowRaiser, WindowFocuser
 from linux.launcher import ShellLauncher
 from linux.power import LockMonitor, SleepMonitor
-from linux.widgets import ClockWidget, WeatherWidget, Widget
+from linux.widgets import (
+    ClockWidget,
+    PomodoroWidget,
+    TimerWidget,
+    WeatherWidget,
+    Widget,
+    desktop_notify,
+)
 
 log = logging.getLogger("herdr_dock")
 
@@ -69,6 +76,14 @@ def build_widgets(home: tuple[HomeKey, ...]) -> dict[int, Widget]:
     for key in home:
         if key.widget == "clock":
             widgets[key.index] = ClockWidget(key.time_format, key.date_format)
+        elif key.widget == "pomodoro":
+            widgets[key.index] = PomodoroWidget(
+                key.work_minutes * 60,
+                key.rest_minutes * 60,
+                notify=desktop_notify if key.notify else None,
+            )
+        elif key.widget == "timer":
+            widgets[key.index] = TimerWidget()
         elif key.widget == "weather":
             assert key.latitude is not None and key.longitude is not None  # validated by config
             widgets[key.index] = WeatherWidget(

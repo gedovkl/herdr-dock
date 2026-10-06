@@ -5,6 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
+import subprocess
+import time
 import urllib.parse
 import urllib.request
 from collections.abc import Awaitable, Callable
@@ -12,7 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol
 
-from herdr_core.faces import ClockFace, Face, WeatherFace
+from herdr_core.faces import ClockFace, Face, PomodoroFace, TimerFace, WeatherFace
 
 log = logging.getLogger(__name__)
 
@@ -23,8 +26,143 @@ FetchJson = Callable[[str], Awaitable[Any]]
 class Widget(Protocol):
     def face(self) -> Face: ...
 
+    def press(self) -> bool:
+        """Handle a key press; False if the key's run/app/focus should run instead."""
+        ...
 
-class ClockWidget:
+    def advance(self) -> None:
+        """Called every tick, even when the key isn't visible (e.g. phase notifications)."""
+        ...
+
+
+Notify = Callable[[str, str], None]
+
+
+def desktop_notify(title: str, body: str) -> None:
+    """Best-effort desktop notification (notify-send); never raises."""
+    try:
+        subprocess.Popen(
+            ["notify-send", "--app-name=herdr-dock", title, body],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError as exc:
+        log.info("notify-send unavailable: %s", exc)
+
+
+def format_duration(seconds: float) -> str:
+    """m:ss, or h:mm:ss from one hour."""
+    total = max(0, int(seconds))
+    hours, rest = divmod(total, 3600)
+    minutes, secs = divmod(rest, 60)
+    return f"{hours}:{minutes:02d}:{secs:02d}" if hours else f"{minutes}:{secs:02d}"
+
+
+class _Passive:
+    """Display-only widget: presses fall through to the key's run/app/focus."""
+
+    def press(self) -> bool:
+        return False
+
+    def advance(self) -> None:
+        return None
+
+
+class PomodoroWidget:
+    """Press to start (work), press again to stop. Alternates work and rest while running."""
+
+    def __init__(
+        self,
+        work_seconds: float = 25 * 60,
+        rest_seconds: float = 5 * 60,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        notify: Notify | None = None,
+    ) -> None:
+        if work_seconds <= 0 or rest_seconds <= 0:
+            raise ValueError("pomodoro work and rest must be positive")
+        self._work = work_seconds
+        self._rest = rest_seconds
+        self._clock = clock
+        self._notify = notify
+        self._started: float | None = None
+        self._phase = "idle"
+
+    @property
+    def running(self) -> bool:
+        return self._started is not None
+
+    def press(self) -> bool:
+        if self._started is None:
+            self._started, self._phase = self._clock(), "work"
+            log.info("pomodoro started")
+        else:
+            self._started, self._phase = None, "idle"
+            log.info("pomodoro stopped")
+        return True
+
+    def _state(self) -> tuple[str, float, float]:
+        """(phase, seconds remaining, progress) right now."""
+        assert self._started is not None
+        position = (self._clock() - self._started) % (self._work + self._rest)
+        if position < self._work:
+            return "work", self._work - position, position / self._work
+        position -= self._work
+        return "rest", self._rest - position, position / self._rest
+
+    def face(self) -> Face:
+        if self._started is None:
+            return PomodoroFace()
+        phase, remaining, progress = self._state()
+        # Round up so a fresh 25-minute phase shows 25:00, not 24:59.
+        return PomodoroFace(phase, format_duration(math.ceil(remaining)), round(progress, 2))
+
+    def advance(self) -> None:
+        if self._started is None:
+            return
+        phase = self._state()[0]
+        if phase == self._phase:
+            return
+        self._phase = phase
+        if self._notify is not None:
+            if phase == "rest":
+                self._notify("Pomodoro: rest", f"Take a {format_duration(self._rest)} break")
+            else:
+                self._notify("Pomodoro: work", f"Focus for {format_duration(self._work)}")
+
+
+class TimerWidget:
+    """A stopwatch: press to start, press again to stop."""
+
+    def __init__(self, *, clock: Callable[[], float] = time.monotonic) -> None:
+        self._clock = clock
+        self._started: float | None = None
+
+    @property
+    def running(self) -> bool:
+        return self._started is not None
+
+    def press(self) -> bool:
+        if self._started is None:
+            self._started = self._clock()
+        else:
+            log.info("timer stopped at %s", format_duration(self._clock() - self._started))
+            self._started = None
+        return True
+
+    def face(self) -> Face:
+        if self._started is None:
+            return TimerFace()
+        elapsed = self._clock() - self._started
+        return TimerFace(format_duration(elapsed), pulse=int(elapsed) % 2 == 0)
+
+    def advance(self) -> None:
+        return None
+
+
+class ClockWidget(_Passive):
     def __init__(
         self,
         time_format: str = "%H:%M",
@@ -76,7 +214,7 @@ async def fetch_json(url: str, timeout: float = 10.0) -> Any:
     return await asyncio.to_thread(get)
 
 
-class WeatherWidget:
+class WeatherWidget(_Passive):
     """Shows the last successful reading; refresh() fetches a new one."""
 
     RETRY_SECONDS = 60

@@ -236,6 +236,12 @@ async def test_widget_keys_and_tick(rig: Rig) -> None:
         def face(self) -> ClockFace:
             return ClockFace(self.text)
 
+        def press(self) -> bool:
+            return False
+
+        def advance(self) -> None:
+            pass
+
     clock = Clock()
     rig.controller._widgets = {4: clock}
     await rig.controller.draw_home()
@@ -283,3 +289,46 @@ async def test_blank_in_herdr_mode_pauses_animation(rig: Rig) -> None:
     assert rig.presenter._task is None
     await rig.controller.set_blank(False)
     assert rig.presenter._task is not None
+
+
+async def test_pressable_widgets_toggle_and_redraw_immediately(rig: Rig) -> None:
+    from herdr_core.faces import TimerFace
+    from linux.widgets import TimerWidget
+
+    now = [100.0]
+    timer = TimerWidget(clock=lambda: now[0])
+    rig.controller._widgets = {9: timer}
+    await rig.controller.draw_home()
+    assert rig.surface.shown[9] == png(TimerFace())
+    await rig.controller.handle(KeyPressed(9))
+    assert timer.running
+    assert rig.surface.shown[9] == png(TimerFace("0:00", pulse=True))  # drawn right away
+    now[0] += 61
+    await rig.controller.tick()
+    assert rig.surface.shown[9] == png(TimerFace("1:01", pulse=False))
+    await rig.controller.handle(KeyPressed(9))
+    assert not timer.running and rig.surface.shown[9] == png(TimerFace())
+    assert rig.launcher.runs == [] and rig.launcher.apps == []
+
+
+async def test_widgets_advance_in_herdr_mode_and_failures_are_contained(
+    rig: Rig, caplog: pytest.LogCaptureFixture
+) -> None:
+    advanced: list[str] = []
+
+    class Ticking:
+        def face(self) -> EmptyFace:
+            return EmptyFace()
+
+        def press(self) -> bool:
+            return False
+
+        def advance(self) -> None:
+            advanced.append("x")
+            raise RuntimeError("boom")
+
+    rig.controller._widgets = {9: Ticking()}
+    await rig.controller.enter_herdr()
+    await rig.controller.tick()
+    assert advanced == ["x"]  # pomodoro notifications keep coming in Herdr mode
+    assert "advancing a widget failed" in caplog.text

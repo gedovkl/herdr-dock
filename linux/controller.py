@@ -165,7 +165,13 @@ class DockController:
             self._home_shown[index] = face
 
     async def tick(self) -> None:
-        """Refresh live home keys (clock, weather); only keys that changed are sent."""
+        """Advance widgets (always, so a pomodoro notifies in Herdr mode too), then refresh
+        the visible home keys; only keys that changed are sent."""
+        for widget in self._widgets.values():
+            try:
+                widget.advance()
+            except Exception:
+                log.warning("advancing a widget failed", exc_info=True)
         if self._mode is Mode.HOME and self._widgets and not self._blank:
             await self.draw_home()
 
@@ -182,6 +188,10 @@ class DockController:
         return LauncherFace(key.label, key.symbol, key.icon)
 
     async def _home_press(self, event: KeyPressed) -> None:
+        widget = self._widgets.get(event.index)
+        if widget is not None and widget.press():
+            await self.draw_home()  # show the new state right away
+            return
         key = self._home.get(event.index)
         if key is None:
             return

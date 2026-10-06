@@ -5,8 +5,17 @@ from typing import Any
 
 import pytest
 
-from herdr_core.faces import ClockFace, WeatherFace
-from linux.widgets import ClockWidget, WeatherWidget, fetch_json, weather_condition
+from herdr_core.faces import ClockFace, PomodoroFace, TimerFace, WeatherFace
+from linux.widgets import (
+    ClockWidget,
+    PomodoroWidget,
+    TimerWidget,
+    WeatherWidget,
+    desktop_notify,
+    fetch_json,
+    format_duration,
+    weather_condition,
+)
 
 NASHUA = (42.7654, -71.4676)
 GOOD = {"current": {"temperature_2m": 51.6, "weather_code": 0, "is_day": 1}}
@@ -93,3 +102,97 @@ def test_refresh_interval() -> None:
 async def test_fetch_json_reports_network_errors() -> None:
     with pytest.raises(OSError):  # urllib's URLError is an OSError
         await fetch_json("http://127.0.0.1:9/never", timeout=0.5)
+
+
+@pytest.mark.parametrize(
+    ("seconds", "text"),
+    [
+        (0, "0:00"),
+        (59.9, "0:59"),
+        (61, "1:01"),
+        (25 * 60, "25:00"),
+        (3599, "59:59"),
+        (3600, "1:00:00"),
+        (3723, "1:02:03"),
+        (-5, "0:00"),
+    ],
+)
+def test_format_duration(seconds: float, text: str) -> None:
+    assert format_duration(seconds) == text
+
+
+def test_timer_counts_while_running() -> None:
+    now = [10.0]
+    timer = TimerWidget(clock=lambda: now[0])
+    assert timer.face() == TimerFace()
+    assert timer.press() and timer.running
+    now[0] = 10.4
+    assert timer.face() == TimerFace("0:00", pulse=True)
+    now[0] = 11.2
+    assert timer.face() == TimerFace("0:01", pulse=False)
+    now[0] = 10 + 3723
+    assert timer.face().elapsed == "1:02:03"  # type: ignore[union-attr]
+    assert timer.press() and not timer.running
+    assert timer.face() == TimerFace()
+    timer.advance()  # no-op
+
+
+def test_pomodoro_cycles_work_and_rest_and_notifies_on_change() -> None:
+    now = [0.0]
+    notes: list[tuple[str, str]] = []
+    pomodoro = PomodoroWidget(
+        25 * 60, 5 * 60, clock=lambda: now[0], notify=lambda t, b: notes.append((t, b))
+    )
+    assert pomodoro.face() == PomodoroFace()
+    pomodoro.advance()  # stopped: nothing happens
+    assert pomodoro.press() and pomodoro.running
+    assert pomodoro.face() == PomodoroFace("work", "25:00", 0.0)
+    now[0] = 10 * 60
+    assert pomodoro.face() == PomodoroFace("work", "15:00", 0.4)
+    pomodoro.advance()
+    assert notes == []
+    now[0] = 25 * 60 + 30
+    assert pomodoro.face() == PomodoroFace("rest", "4:30", 0.1)
+    pomodoro.advance()
+    pomodoro.advance()  # notified once per change
+    assert notes == [("Pomodoro: rest", "Take a 5:00 break")]
+    now[0] = 30 * 60 + 1  # next cycle
+    assert pomodoro.face().phase == "work"  # type: ignore[union-attr]
+    pomodoro.advance()
+    assert notes[-1] == ("Pomodoro: work", "Focus for 25:00")
+    assert pomodoro.press() and not pomodoro.running
+    assert pomodoro.face() == PomodoroFace()
+
+
+def test_pomodoro_without_notifications_and_validation() -> None:
+    now = [0.0]
+    pomodoro = PomodoroWidget(60, 60, clock=lambda: now[0])
+    pomodoro.press()
+    now[0] = 61
+    pomodoro.advance()  # no notifier: just tracks the phase
+    with pytest.raises(ValueError):
+        PomodoroWidget(0, 5)
+
+
+def test_passive_widgets_let_presses_fall_through() -> None:
+    assert not ClockWidget().press()
+    assert not WeatherWidget(*NASHUA).press()
+    ClockWidget().advance()
+
+
+def test_desktop_notify_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+
+    def popen(argv: list[str], **kwargs: object) -> None:
+        calls.append(argv)
+
+    monkeypatch.setattr("linux.widgets.subprocess.Popen", popen)
+    desktop_notify("Pomodoro: rest", "Take a 5:00 break")
+    expected = ["notify-send", "--app-name=herdr-dock", "Pomodoro: rest", "Take a 5:00 break"]
+    assert calls == [expected]
+
+    def missing(argv: list[str], **kwargs: object) -> None:
+        raise FileNotFoundError("notify-send")
+
+    monkeypatch.setattr("linux.widgets.subprocess.Popen", missing)
+    desktop_notify("x", "y")

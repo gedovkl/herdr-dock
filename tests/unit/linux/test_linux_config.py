@@ -194,3 +194,32 @@ def test_widget_keys() -> None:
 def test_widget_errors(entry: dict[str, object], message: str) -> None:
     with pytest.raises(ConfigError, match=message):
         parse_linux_config({"home": [{"key": 1, **entry}]})
+
+
+def test_pomodoro_and_timer_keys() -> None:
+    config = parse_linux_config(
+        {
+            "home": [
+                {"key": 13, "widget": "pomodoro", "work_minutes": 50, "rest_minutes": 10},
+                {"key": 14, "widget": "pomodoro", "notify": False},
+                {"key": 15, "widget": "timer"},
+            ]
+        }
+    )
+    custom, default, timer = config.home
+    assert (custom.work_minutes, custom.rest_minutes, custom.notify) == (50.0, 10.0, True)
+    assert (default.work_minutes, default.rest_minutes, default.notify) == (25.0, 5.0, False)
+    assert timer.widget == "timer"
+
+
+@pytest.mark.parametrize(
+    ("entry", "message"),
+    [
+        ({"widget": "pomodoro", "work_minutes": 0}, "work_minutes must be a positive"),
+        ({"widget": "pomodoro", "rest_minutes": "5"}, "rest_minutes must be a positive"),
+        ({"widget": "pomodoro", "notify": "yes"}, "notify must be true or false"),
+    ],
+)
+def test_pomodoro_errors(entry: dict[str, object], message: str) -> None:
+    with pytest.raises(ConfigError, match=message):
+        parse_linux_config({"home": [{"key": 1, **entry}]})

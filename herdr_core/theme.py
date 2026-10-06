@@ -63,3 +63,14 @@ CLOCK_DATE_COLOR = "#a6adc8"  # subtext0
 
 def temperature_color(celsius: float) -> str:
     return next(color for limit, color in TEMPERATURE_COLORS if celsius < limit)
+
+
+POMODORO_WORK_COLOR = "#f38ba8"  # red
+POMODORO_REST_COLOR = "#a6e3a1"  # green
+TOMATO_COLOR = "#e64553"
+TOMATO_HIGHLIGHT = "#f5a3b5"
+TOMATO_LEAF_COLOR = "#40a02b"
+STOPWATCH_RING = ("#89b4fa", "#cba6f7", "#f5c2e7", "#fab387")  # blue → mauve → pink → peach
+STOPWATCH_FACE = "#eff1f5"
+STOPWATCH_HAND = "#1e1e2e"
+TIMER_RUNNING_COLOR = "#89dceb"  # sky

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import logging
+import math
 from collections import OrderedDict
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -22,6 +23,8 @@ from herdr_core.faces import (
     LauncherFace,
     OfflineFace,
     PagerFace,
+    PomodoroFace,
+    TimerFace,
     WeatherFace,
 )
 from herdr_core.models import AgentStatus
@@ -29,7 +32,16 @@ from herdr_core.theme import (
     CLOCK_DATE_COLOR,
     CLOCK_DAY_COLOR,
     CLOCK_TIME_COLOR,
+    POMODORO_REST_COLOR,
+    POMODORO_WORK_COLOR,
     STATUS_SYMBOL,
+    STOPWATCH_FACE,
+    STOPWATCH_HAND,
+    STOPWATCH_RING,
+    TIMER_RUNNING_COLOR,
+    TOMATO_COLOR,
+    TOMATO_HIGHLIGHT,
+    TOMATO_LEAF_COLOR,
     WEATHER_COLOR,
     WEATHER_SYMBOL,
     temperature_color,
@@ -164,6 +176,10 @@ class KeyRenderer:
             return self._clock_face(face)
         if isinstance(face, WeatherFace):
             return self._weather_face(face)
+        if isinstance(face, PomodoroFace):
+            return self._pomodoro_face(face)
+        if isinstance(face, TimerFace):
+            return self._timer_face(face)
         assert isinstance(face, EmptyFace)
         return Image.new("RGB", (self._size, self._size), self._palette.empty)
 
@@ -272,6 +288,107 @@ class KeyRenderer:
             muted = blend(fg, hex_to_rgb(self._palette.muted), 0.4)
             self._line(draw, face.place, self._size - self._px(3), "mb", muted)
         return image
+
+    def _pomodoro_face(self, face: PomodoroFace) -> Image.Image:
+        image, draw = self._canvas(self._bg)
+        if face.phase == "idle":
+            self._draw_tomato(draw)
+            self._line(draw, "pomodoro", self._size - self._px(3), "mb", self._soft_text())
+            return image
+        color = hex_to_rgb(POMODORO_WORK_COLOR if face.phase == "work" else POMODORO_REST_COLOR)
+        label = "WORK" if face.phase == "work" else "REST"
+        draw.text((self._half, self._px(11)), label, font=self._text, fill=color, anchor="mm")
+        width = self._size - self._px(6)
+        font = self._font_to_fit(face.remaining, width, largest=21, smallest=9)
+        fg = hex_to_rgb(self._palette.light_text)
+        draw.text((self._half, self._px(33)), face.remaining, font=font, fill=fg, anchor="mm")
+        # progress bar
+        left, right = self._px(6), self._size - self._px(6)
+        top, bottom = self._size - self._px(12), self._size - self._px(7)
+        draw.rounded_rectangle(
+            (left, top, right, bottom), radius=self._px(2), fill=blend(self._bg, color, 0.25)
+        )
+        filled = left + round((right - left) * max(0.0, min(1.0, face.progress)))
+        if filled > left:
+            draw.rounded_rectangle((left, top, filled, bottom), radius=self._px(2), fill=color)
+        return image
+
+    def _draw_tomato(self, draw: ImageDraw.ImageDraw) -> None:
+        cx, cy, r = self._half, self._px(30), self._px(17)
+        draw.ellipse((cx - r, cy - r + self._px(1), cx + r, cy + r), fill=hex_to_rgb(TOMATO_COLOR))
+        hx, hy, hr = cx - self._px(8), cy - self._px(3), self._px(4)
+        draw.ellipse((hx - hr, hy - hr, hx + hr, hy + hr), fill=hex_to_rgb(TOMATO_HIGHLIGHT))
+        # calyx: five green leaves radiating from the top of the tomato, plus a stem
+        leaf = hex_to_rgb(TOMATO_LEAF_COLOR)
+        base_x, base_y = cx, cy - r + self._px(4)
+        for angle in (-160, -110, -70, -20, 90):
+            rad = math.radians(angle)
+            tip = (base_x + math.cos(rad) * self._px(11), base_y + math.sin(rad) * self._px(6))
+            side = math.radians(angle + 90)
+            half = self._px(2.5)
+            p1 = (base_x + math.cos(side) * half, base_y + math.sin(side) * half)
+            p2 = (base_x - math.cos(side) * half, base_y - math.sin(side) * half)
+            draw.polygon([p1, tip, p2], fill=leaf)
+        draw.line(
+            (base_x, base_y, base_x + self._px(2), base_y - self._px(9)),
+            fill=leaf,
+            width=self._px(3),
+        )
+
+    def _timer_face(self, face: TimerFace) -> Image.Image:
+        image, draw = self._canvas(self._bg)
+        if not face.elapsed:
+            self._draw_stopwatch(draw)
+            self._line(draw, "timer", self._size - self._px(3), "mb", self._soft_text())
+            return image
+        color = hex_to_rgb(TIMER_RUNNING_COLOR)
+        dot = self._px(3)
+        if face.pulse:
+            draw.ellipse(
+                (self._half - dot, self._px(9) - dot, self._half + dot, self._px(9) + dot),
+                fill=hex_to_rgb(POMODORO_WORK_COLOR),
+            )
+        width = self._size - self._px(6)
+        font = self._font_to_fit(face.elapsed, width, largest=21, smallest=9)
+        draw.text((self._half, self._px(33)), face.elapsed, font=font, fill=color, anchor="mm")
+        self._line(draw, "timer", self._size - self._px(3), "mb", self._soft_text())
+        return image
+
+    def _draw_stopwatch(self, draw: ImageDraw.ImageDraw) -> None:
+        cx, cy, r = self._half, self._px(30), self._px(17)
+        # crown and side button
+        crown = hex_to_rgb(STOPWATCH_RING[3])
+        draw.rounded_rectangle(
+            (cx - self._px(4), cy - r - self._px(7), cx + self._px(4), cy - r - self._px(2)),
+            radius=self._px(1),
+            fill=crown,
+        )
+        draw.rectangle(
+            (cx - self._px(1), cy - r - self._px(3), cx + self._px(1), cy - r + self._px(1)),
+            fill=crown,
+        )
+        # colourful ring: four arcs
+        box = (cx - r, cy - r, cx + r, cy + r)
+        for i, hex_color in enumerate(STOPWATCH_RING):
+            start = -90 + i * 90
+            draw.arc(box, start, start + 90, fill=hex_to_rgb(hex_color), width=self._px(4))
+        inner = r - self._px(5)
+        draw.ellipse(
+            (cx - inner, cy - inner, cx + inner, cy + inner), fill=hex_to_rgb(STOPWATCH_FACE)
+        )
+        hand = hex_to_rgb(STOPWATCH_HAND)
+        draw.line((cx, cy, cx, cy - inner + self._px(2)), fill=hand, width=self._px(2))
+        draw.line(
+            (cx, cy, cx + self._px(7), cy + self._px(4)),
+            fill=hex_to_rgb(STOPWATCH_RING[1]),
+            width=self._px(2),
+        )
+        draw.ellipse(
+            (cx - self._px(2), cy - self._px(2), cx + self._px(2), cy + self._px(2)), fill=hand
+        )
+
+    def _soft_text(self) -> RGB:
+        return blend(hex_to_rgb(self._palette.light_text), hex_to_rgb(self._palette.muted), 0.4)
 
     def _font_to_fit(
         self, text: str, width: int, *, largest: int, smallest: int

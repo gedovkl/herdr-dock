@@ -124,7 +124,7 @@ Every setting is documented in [`config.example.toml`](config.example.toml). The
 
 | Setting | What it does |
 |---------|--------------|
-| `[[home]]` | Home-page keys: `key = 1..15` plus one of `herdr = true`, `app = "<desktop id>"`, `run = "<shell command>"` or `widget = "clock" \| "weather"`. Optional `label`, `symbol`, `icon = "<path>"`, and `focus = "<window class regex>"` to focus an already-running window instead of starting another one |
+| `[[home]]` | Home-page keys: `key = 1..15` plus one of `herdr = true`, `app = "<desktop id>"`, `run = "<shell command>"` or `widget = "clock" \| "weather" \| "pomodoro" \| "timer"`. Optional `label`, `symbol`, `icon = "<path>"`, and `focus = "<window class regex>"` to focus an already-running window instead of starting another one |
 | `[linux.buttons]` | `left`/`middle`/`right` → `"herdr"`, `"page"` or `"none"` |
 | `[linux] focus_herdr_on_enter` | `true` (default): entering Herdr mode also brings the herdr window to the front (Hyprland) |
 | `[linux] blank_when_locked`, `blank_on_sleep` | `true` (default): turn the dock off while the session is locked / the machine sleeps. `lock_poll_seconds` (1) sets how quickly a lock is noticed |
@@ -160,7 +160,30 @@ refresh_minutes = 15       # how often to fetch (≥ 1)
 - Weather shows a symbol (☀ ☾ ☁ ≡ ☂ ☔ ❄ ⚡), the rounded temperature and the place. With no network
   it keeps the last reading, or shows `--` before the first one, and retries every minute. One
   warning is logged per outage.
-- Widget keys can also act when pressed: add `run`, `app` or `focus` (for example
+#### Pomodoro and timer keys
+
+```toml
+[[home]]
+key = 13
+widget = "pomodoro"   # press: start, press again: stop
+work_minutes = 25
+rest_minutes = 5
+notify = true         # desktop notification (notify-send) when work/rest switches
+
+[[home]]
+key = 14
+widget = "timer"      # stopwatch: press to start, press again to stop
+```
+
+- **Pomodoro:** stopped, it shows a tomato. Running, it shows `WORK` (red) or `REST`
+  (green), the time left and a progress bar, and it alternates work and rest until you press it
+  again. Notifications keep coming while you're in Herdr mode.
+- **Timer:** stopped, it shows a colourful stopwatch. Running, it counts `m:ss` (`h:mm:ss`
+  from one hour) with a blinking dot. Pressing it again stops and resets it.
+- Both keep running in the background while you're in Herdr mode, and use the monotonic clock,
+  so they aren't thrown off by clock changes.
+
+- Clock and weather keys can also act when pressed: add `run`, `app` or `focus` (for example
   `run = "xdg-open https://weather.gov"`).
 
 #### Home keys for apps: focus if running, otherwise launch

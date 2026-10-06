@@ -17,6 +17,8 @@ def test_example_config_is_valid_and_matches_defaults() -> None:
         "Zed",
         "clock",
         "weather",
+        "pomodoro",
+        "timer",
     ]
     assert linux.home[0].herdr
     assert linux.home[3].focus == r"^dev\.zed\.Zed$"

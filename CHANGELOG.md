@@ -3,6 +3,20 @@
 What was built, in order, and what was learned along the way. Architecture and rationale live in
 [DESIGN.md](DESIGN.md); setup is in [README.md](README.md).
 
+## Pomodoro and timer keys
+
+- `widget = "pomodoro"`: `work_minutes` / `rest_minutes` (25/5) and `notify` in the config.
+  - Press to start, press again to stop.
+  - Running: `WORK` (red) or `REST` (green), time left, a progress bar, and automatic cycling.
+  - Phase changes send a `notify-send` notification, also while in Herdr mode.
+  - Stopped: a drawn tomato.
+- `widget = "timer"`: a stopwatch. Press to start, press again to stop and reset.
+  - Running: `m:ss` / `h:mm:ss` with a blinking dot.
+  - Stopped: a drawn stopwatch with a four-colour ring.
+- All widgets share one interface (`face`, `press`, `advance`). Clock and weather pass presses
+  through to `run`/`app`/`focus`.
+- The author's config, mirrored in `config.example.toml`: pomodoro on key 13, timer on key 14.
+
 ## Third code review fixes
 
 All three findings were real. Each fix has a test that failed first:
