@@ -194,7 +194,7 @@ def test_clock_and_weather_faces_fit_their_text(renderer: KeyRenderer) -> None:
     from herdr_core.faces import ClockFace, WeatherFace
 
     for face in (
-        ClockFace("14:07", "Mon 05 Oct"),
+        ClockFace("14:07", "Mon 5 Oct"),
         ClockFace("14:07:59"),
         ClockFace("a very long time format that cannot fit", "and a long date too, really"),
         WeatherFace("52°F", "☀", "Nashua"),

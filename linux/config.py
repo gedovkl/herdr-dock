@@ -41,7 +41,7 @@ class HomeKey:
     widget: str = ""
     """"clock" or "weather": a live key (pressing it still runs run/app/focus, if set)."""
     time_format: str = "%H:%M"
-    date_format: str = "%a %d %b"
+    date_format: str = "%a %-d %b"
     latitude: float | None = None
     longitude: float | None = None
     units: str = "celsius"
@@ -203,7 +203,7 @@ def _widget(entry: Mapping[str, Any], key: int) -> dict[str, Any]:
         return {
             "widget": widget,
             "time_format": _text(entry, "time_format", key) or "%H:%M",
-            "date_format": str(entry.get("date_format", "%a %d %b")),
+            "date_format": str(entry.get("date_format", "%a %-d %b")),
         }
     units = entry.get("units", "celsius")
     if units not in UNITS:

@@ -36,7 +36,7 @@ SAMPLES: tuple[tuple[str, Face], ...] = (
     ("exit-blocked", ExitFace((AgentStatus.BLOCKED, AgentStatus.DONE, AgentStatus.IDLE))),
     ("exit-offline", ExitFace((), connected=False)),
     ("launcher", LauncherFace("herdr", "◐")),
-    ("clock", ClockFace("14:07", "Mon 05 Oct")),
+    ("clock", ClockFace("14:07", "Mon 5 Oct")),
     ("clock-seconds", ClockFace("14:07:59", "05.10.2026")),
     ("weather", WeatherFace("52°F", "☀", "Nashua")),
     ("weather-snow", WeatherFace("-12°C", "❄", "Somewhere long")),

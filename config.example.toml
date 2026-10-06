@@ -92,7 +92,7 @@ focus = "^dev\\.zed\\.Zed$"
 key = 11
 widget = "clock"
 time_format = "%H:%M"          # strftime; e.g. "%I:%M %p" for 12-hour
-date_format = "%a %d %b"       # "" to hide the date
+date_format = "%a %-d %b"       # "" to hide the date
 
 [[home]]
 key = 12

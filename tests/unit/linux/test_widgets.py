@@ -14,7 +14,7 @@ GOOD = {"current": {"temperature_2m": 51.6, "weather_code": 0, "is_day": 1}}
 
 def test_clock_formats_time_and_date() -> None:
     now = datetime(2026, 10, 5, 14, 7, 59)
-    assert ClockWidget(now=lambda: now).face() == ClockFace("14:07", "Mon 05 Oct")
+    assert ClockWidget(now=lambda: now).face() == ClockFace("14:07", "Mon 5 Oct")  # no zero pad
     assert ClockWidget("%H:%M:%S", "", now=lambda: now).face() == ClockFace("14:07:59", "")
 
 

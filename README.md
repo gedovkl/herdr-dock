@@ -139,7 +139,7 @@ Restart the daemon after changing the config (`systemctl --user restart herdr-do
 key = 11
 widget = "clock"
 time_format = "%H:%M"      # strftime format; "%I:%M %p" for 12-hour, "%H:%M:%S" with seconds
-date_format = "%a %d %b"   # "" hides the date
+date_format = "%a %-d %b"   # "" hides the date
 
 [[home]]
 key = 12
