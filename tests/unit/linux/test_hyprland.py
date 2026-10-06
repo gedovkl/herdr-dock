@@ -9,11 +9,14 @@ import pytest
 from herdr_core.models import Agent, AgentStatus
 from linux.hyprland import (
     HerdrWindowRaiser,
+    Hyprland,
     Process,
+    WindowFocuser,
     herdr_clients,
     read_processes,
     run_exec,
     window_for,
+    window_matching,
 )
 
 AGENT = Agent("w1:p1", "w1", "w1:t1", "claude", AgentStatus.IDLE)
@@ -131,3 +134,32 @@ async def test_run_exec() -> None:
     assert await run_exec(["sh", "-c", "echo hi; exit 3"]) == (3, "hi\n")
     assert await run_exec(["true"]) == (0, "")
     assert await run_exec(["sleep", "5"], timeout=0.05) == (-1, "")
+
+
+CLASSED = [
+    {"class": "chrome-omarchy.org__manual_-Default", "address": "0xweb", "focusHistoryID": 0},
+    {"class": "chromium", "address": "0xold", "focusHistoryID": 5},
+    {"class": "Chromium", "address": "0xnew", "focusHistoryID": 2},
+    {"class": "foot", "address": "0xfoot", "focusHistoryID": 1},
+]
+
+
+def test_window_matching_is_anchored_regex_case_insensitive_most_recent() -> None:
+    assert window_matching("^chromium$", CLASSED) == "0xnew"
+    assert window_matching("chrom", CLASSED) == "0xweb"
+    assert window_matching("^firefox$", CLASSED) is None
+    assert window_matching("x", [{"class": "x", "address": 3}]) is None
+
+
+async def test_window_focuser() -> None:
+    hyprctl = Hyprctl(clients=CLASSED)
+    assert await WindowFocuser(hyprctl).focus_matching("^chromium$")
+    assert hyprctl.calls[-1][2] == 'hl.dsp.focus({ window = "address:0xnew" })'
+    assert not await WindowFocuser(Hyprctl(clients=CLASSED)).focus_matching("^firefox$")
+    assert not await WindowFocuser(Hyprctl(clients=(1, ""))).focus_matching("x")
+    failing = Hyprctl(clients=CLASSED, focus=[(1, ""), (1, "")])
+    assert not await WindowFocuser(failing).focus_matching("foot")
+
+
+async def test_windows_must_be_a_list() -> None:
+    assert await Hyprland(Hyprctl(clients={"not": "a list"})).windows() is None

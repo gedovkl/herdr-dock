@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -102,32 +103,35 @@ def _history(window: dict[str, object]) -> int:
     return value if isinstance(value, int) else 1_000_000
 
 
-class HerdrWindowRaiser:
-    """Implements Raiser: focuses the terminal window hosting the herdr client."""
+def window_matching(pattern: str, windows: Sequence[dict[str, object]]) -> str | None:
+    """Address of the most recently focused window whose class matches `pattern` (regex)."""
+    regex = re.compile(pattern, re.IGNORECASE)
+    matches = [w for w in windows if regex.search(str(w.get("class", "")))]
+    if not matches:
+        return None
+    address = min(matches, key=_history).get("address")
+    return address if isinstance(address, str) else None
 
-    def __init__(
-        self,
-        run: Exec = run_exec,
-        processes: Callable[[], dict[int, Process]] = read_processes,
-    ) -> None:
+
+class Hyprland:
+    """The few hyprctl operations herdr-dock needs."""
+
+    def __init__(self, run: Exec = run_exec) -> None:
         self._run = run
-        self._processes = processes
 
-    async def raise_window(self, agent: Agent) -> None:
+    async def windows(self) -> list[dict[str, object]] | None:
         code, out = await self._run(["hyprctl", "clients", "-j"])
         if code != 0:
             log.warning("hyprctl clients failed (%s); is Hyprland running?", code)
-            return
+            return None
         try:
             windows = json.loads(out)
         except json.JSONDecodeError:
             log.warning("hyprctl clients returned invalid JSON")
-            return
-        processes = self._processes()
-        address = window_for(herdr_clients(processes.values()), processes, windows)
-        if address is None:
-            log.info("no window found for a herdr client")
-            return
+            return None
+        return windows if isinstance(windows, list) else None
+
+    async def focus(self, address: str) -> bool:
         selector = f"address:{address}"
         # Hyprland >= 0.55 uses Lua dispatchers; older versions take `focuswindow <selector>`.
         for argv in (
@@ -136,5 +140,44 @@ class HerdrWindowRaiser:
         ):
             code, out = await self._run(argv)
             if code == 0 and out.strip() == "ok":
-                return
+                return True
         log.warning("could not focus window %s", address)
+        return False
+
+
+class HerdrWindowRaiser:
+    """Implements Raiser: focuses the terminal window hosting the herdr client."""
+
+    def __init__(
+        self,
+        run: Exec = run_exec,
+        processes: Callable[[], dict[int, Process]] = read_processes,
+    ) -> None:
+        self._hyprland = Hyprland(run)
+        self._processes = processes
+
+    async def raise_window(self, agent: Agent) -> None:
+        windows = await self._hyprland.windows()
+        if windows is None:
+            return
+        processes = self._processes()
+        address = window_for(herdr_clients(processes.values()), processes, windows)
+        if address is None:
+            log.info("no window found for a herdr client")
+            return
+        await self._hyprland.focus(address)
+
+
+class WindowFocuser:
+    """Focuses an existing window by class pattern (home keys with `focus = ...`)."""
+
+    def __init__(self, run: Exec = run_exec) -> None:
+        self._hyprland = Hyprland(run)
+
+    async def focus_matching(self, pattern: str) -> bool:
+        """True if a matching window existed and was focused."""
+        windows = await self._hyprland.windows()
+        if not windows:
+            return False
+        address = window_matching(pattern, windows)
+        return address is not None and await self._hyprland.focus(address)

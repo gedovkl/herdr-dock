@@ -64,6 +64,21 @@ symbol = "⚙"
     assert config.home[2].index == 14
 
 
+def test_focus_keys() -> None:
+    config = parse_linux_config(
+        {
+            "home": [
+                {"key": 2, "label": "Browser", "app": "chromium", "focus": "^chromium$"},
+                {"key": 3, "label": "Zed", "focus": "zed"},
+            ]
+        }
+    )
+    assert config.home == (
+        HomeKey(2, "Browser", app="chromium", focus="^chromium$"),
+        HomeKey(3, "Zed", focus="zed"),
+    )
+
+
 def test_missing_file_means_defaults(tmp_path: Path) -> None:
     assert load_linux_config(tmp_path / "none.toml") == LinuxConfig()
 
@@ -98,6 +113,9 @@ def test_invalid_toml(tmp_path: Path) -> None:
         ({"home": [{"key": 1, "run": "a", "app": "b"}]}, "exactly one"),
         ({"home": [{"key": 1, "run": 3}]}, "run must be a string"),
         ({"home": [{"key": 1, "herdr": "yes"}]}, "herdr must be true or false"),
+        ({"home": [{"key": 1, "herdr": True, "focus": "x"}]}, "can't be combined"),
+        ({"home": [{"key": 1, "herdr": True, "run": "x"}]}, "can't be combined"),
+        ({"home": [{"key": 1, "app": "a", "focus": "("}]}, "invalid focus pattern"),
     ],
 )
 def test_errors(data: dict[str, object], message: str) -> None:

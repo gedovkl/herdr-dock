@@ -53,18 +53,22 @@ right = "page"
 #   herdr = true       enter Herdr mode
 #   app = "<id>"       launch a desktop app through app_launcher
 #   run = "<command>"  run a shell command (detached)
-# Optional: symbol = "<glyph>" or icon = "<path to image>" (icon wins).
+# Optional:
+#   focus = "<regex>"  if a Hyprland window whose class matches exists, focus it instead of
+#                      launching (`hyprctl clients` shows classes; anchor with ^...$)
+#   symbol = "<glyph>" or icon = "<path to image>" (icon wins)
 [[home]]
 key = 1
 label = "herdr"
 symbol = "◐"
 herdr = true
 
-# [[home]]                       # example
+# [[home]]                       # example: open the browser, or focus it if it's running
 # key = 2
 # label = "Browser"
-# symbol = "🌐"
+# icon = "/usr/share/icons/hicolor/128x128/apps/chromium.png"
 # app = "chromium"
+# focus = "^chromium$"
 
 # [[home]]                       # example
 # key = 3

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -33,6 +34,8 @@ class HomeKey:
     herdr: bool = False
     icon: str = ""
     symbol: str = ""
+    focus: str = ""
+    """Window class regex: focus a matching window if one exists, else run/app."""
 
     @property
     def index(self) -> int:
@@ -149,10 +152,21 @@ def _home(raw: object) -> tuple[HomeKey, ...]:
             herdr=_flag(entry, "herdr", key),
             icon=os.path.expanduser(_text(entry, "icon", key)),
             symbol=_text(entry, "symbol", key),
+            focus=_text(entry, "focus", key),
         )
-        actions = sum(1 for action in (home_key.run, home_key.app, home_key.herdr) if action)
-        if actions != 1:
-            raise ConfigError(f"home key {key}: set exactly one of run, app or herdr = true")
+        launches = sum(1 for action in (home_key.run, home_key.app) if action)
+        if home_key.herdr and (launches or home_key.focus):
+            raise ConfigError(f"home key {key}: herdr = true can't be combined with other actions")
+        if launches > 1 or not (launches or home_key.herdr or home_key.focus):
+            raise ConfigError(
+                f"home key {key}: set exactly one of run, app or herdr = true "
+                "(optionally with focus)"
+            )
+        if home_key.focus:
+            try:
+                re.compile(home_key.focus)
+            except re.error as exc:
+                raise ConfigError(f"home key {key}: invalid focus pattern: {exc}") from None
         keys.append(home_key)
     return tuple(keys)
 

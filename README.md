@@ -10,8 +10,8 @@ agents blink. Press a key to switch herdr to that agent and bring its terminal w
 Both use the same `herdr_core` package. See [DESIGN.md](DESIGN.md) for the architecture,
 engineering rules (SOLID, ≥ 80 % test coverage) and milestones.
 
-**Status:** the Linux daemon works on the M18 (milestones 1–3). Autostart (milestone 4) and the
-macOS plugin (milestone 5) are still to come.
+**Status:** Linux is done: the daemon works on the M18 and runs as a systemd user service
+(milestones 1–4). The macOS plugin (milestone 5) is still to come.
 
 ## How it works on the dock
 
@@ -103,7 +103,7 @@ Every setting is documented in [`config.example.toml`](config.example.toml). The
 
 | Setting | What it does |
 |---------|--------------|
-| `[[home]]` | Home-page keys: `key = 1..15` plus exactly one of `herdr = true`, `app = "<desktop id>"` or `run = "<shell command>"`. Optional `label`, `symbol`, `icon = "<path>"` |
+| `[[home]]` | Home-page keys: `key = 1..15` plus exactly one of `herdr = true`, `app = "<desktop id>"` or `run = "<shell command>"`. Optional `label`, `symbol`, `icon = "<path>"`, and `focus = "<window class regex>"` to focus an already-running window instead of starting another one |
 | `[linux.buttons]` | `left`/`middle`/`right` → `"herdr"`, `"page"` or `"none"` |
 | `[raise] linux` | `"herdr-window"` (default): focus the window the herdr client runs in, via Hyprland. Any other value is a shell command (`{pane_id}`, `{cwd}`, … are filled in; write literal braces as `{{ }}`). Set `enabled = false` to never raise |
 | `label` | Text under the symbol: `"cwd"` (folder), `"title"` or `"name"` |
@@ -111,16 +111,37 @@ Every setting is documented in [`config.example.toml`](config.example.toml). The
 | `[colors]` | Per-status colours (`blocked = "#ff0000"`) |
 | `[linux] brightness`, `device_ids`, `app_launcher` | Screen brightness 0–100, USB IDs to look for, the command `app = …` keys use (`uwsm-app -- {app}`) |
 
-Restart the daemon after changing the config.
+Restart the daemon after changing the config (`systemctl --user restart herdr-dock` once it runs as a service).
+
+Example: a browser key that focuses the running browser, or starts it if there isn't one:
+
+```toml
+[[home]]
+key = 2
+label = "Browser"
+icon = "/usr/share/icons/hicolor/128x128/apps/chromium.png"
+app = "chromium"
+focus = "^chromium$"   # window class, as shown by `hyprctl clients`
+```
 
 ### 7. Start automatically
 
-Coming in milestone 4 (`scripts/install-linux.sh` will install a systemd `--user` service).
-Until then, run `scripts/run-linux.sh` yourself, or start it from your Hyprland autostart:
+```bash
+scripts/install-linux.sh
+```
 
-- Omarchy / Lua config (`~/.config/hypr/autostart.lua`):
-  `o.launch_on_start("~/Projects/herdr-dock/scripts/run-linux.sh")`
-- Classic `hyprland.conf`: `exec-once = ~/Projects/herdr-dock/scripts/run-linux.sh`
+This installs and starts a systemd **user** service (`~/.config/systemd/user/herdr-dock.service`).
+It runs inside your graphical session, starts with it, stops with it, and restarts after a crash.
+Stop any `scripts/run-linux.sh` you started by hand first, because only one process can drive the M18.
+
+```bash
+systemctl --user status herdr-dock      # is it running?
+journalctl --user -u herdr-dock -f      # logs
+systemctl --user restart herdr-dock     # after changing the config
+scripts/install-linux.sh --uninstall    # remove the service
+```
+
+Re-run `scripts/install-linux.sh` if you move the repo or recreate `.venv`.
 
 ### Troubleshooting
 
@@ -130,7 +151,8 @@ Until then, run `scripts/run-linux.sh` yourself, or start it from your Hyprland 
 | Keys stay blank, nothing in the log about the M18 | Your unit has different USB IDs. Run `.venv/bin/python tools/probe_m18.py --vid 0x… --pid 0x…` with the IDs from `lsusb`/`/sys/bus/usb/devices/*/id*`, then add them to `[linux] device_ids` |
 | Agent keys say `herdr offline` | herdr isn't running, or it uses a different socket. Check `herdr status server`, and set `herdr_socket` in the config if needed |
 | Pressing an agent switches herdr but doesn't raise the window | You're not on Hyprland, or the herdr client isn't in a Hyprland window. Set `[raise] linux` to your own command |
-| `tools/probe_m18.py` or the hardware tests can't open the device | Only one process can drive the M18. Stop the daemon first |
+| `tools/probe_m18.py` or the hardware tests can't open the device | Only one process can drive the M18. Stop the daemon first: `systemctl --user stop herdr-dock` |
+| Service doesn't start at login | `systemctl --user status herdr-dock`. It needs `graphical-session.target`, which uwsm and most Wayland session managers provide |
 
 ## Setup on macOS
 
@@ -143,7 +165,7 @@ appears as a "Herdr" folder of agent keys. See DESIGN.md, "macOS front end".
 scripts/setup.sh                        # once
 scripts/check.sh                        # lint + strict types + unit tests (≥ 80 % coverage), before every commit
 scripts/test-integration.sh herdr_live  # against a throwaway headless herdr session
-scripts/test-integration.sh hardware    # against the plugged-in M18 (stop the daemon first)
+scripts/test-integration.sh hardware    # against the plugged-in M18 (systemctl --user stop herdr-dock first)
 scripts/render-preview.sh               # every key image → build/preview/sheet.png
 ```
 
@@ -164,7 +186,7 @@ Run from anywhere; they resolve the repo root themselves. Works with macOS's bas
 | `scripts/run-console.sh [--once]` | Print live herdr agent states in the terminal (no device) |
 | `scripts/render-preview.sh [dir]` | Render all key states/frames to PNGs for review |
 | `scripts/run-linux.sh [-v]` | Run the Linux daemon in the foreground |
-| `scripts/install-linux.sh [--udev]` | `--udev`: install the M18 udev rule (sudo). Without it: install the systemd `--user` service (milestone 4) |
+| `scripts/install-linux.sh [--udev\|--uninstall]` | Install + start the systemd `--user` service. `--udev`: install the M18 udev rule (sudo). `--uninstall`: remove the service |
 | `scripts/build-macos-plugin.sh` | Build `dist/com.herdr.dock.sdPlugin` with PyInstaller (macOS, milestone 5) |
 | `scripts/install-macos-plugin.sh` | Copy the plugin into the StreamDock app (`STREAMDOCK_PLUGINS_DIR` overrides the path) |
 

@@ -42,8 +42,8 @@ for architecture, milestones and open items. Read it before changing anything.
 - Without permissions the SDK's `open()`/`set_key_image()` still report success; check access.
 - Images use `set_key_image(index + 1)`; presses must be decoded from raw packets
   (`data[9]` = index + 1), because the SDK's decoded key numbers are wrong on this unit.
-- Only one process can drive the device: stop the daemon before `tools/probe_m18.py` or
-  `scripts/test-integration.sh hardware`.
+- Only one process can drive the device: `systemctl --user stop herdr-dock` before
+  `tools/probe_m18.py` or `scripts/test-integration.sh hardware`, and start it again after.
 
 ## Platform split
 

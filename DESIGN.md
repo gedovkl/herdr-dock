@@ -421,11 +421,14 @@ flowchart LR
 | `linux/config.py` | `[linux]`, `[linux.buttons]` and `[[home]]` settings |
 | `linux/daemon.py` | Composition root, input queue, replug watcher, signal handling, clean shutdown (keys cleared) |
 | `linux/70-herdr-dock.rules` | udev `uaccess` rule for the M18 IDs (`scripts/install-linux.sh --udev`) |
+| `linux/herdr-dock.service` | systemd user unit template (`scripts/install-linux.sh`) |
 | `tools/probe_m18.py` | Hardware probe: IDs, firmware, key codes, update speed |
 
 **Modes**
 - **HOME**: `[[home]]` keys (`herdr = true`, `app = …`, `run = …`, with an optional `symbol` or
   `icon`). Nothing talks to herdr. The default home page is a single `◐ herdr` key on key 1.
+  `focus = "<class regex>"` first focuses the most recently used Hyprland window whose class
+  matches, and only launches `app`/`run` when there is none (`WindowFocuser`).
 - **HERDR**: key 1 = Exit (`◀ herdr` + status dots), keys 2–15 = agents (key 15 = pager on
   overflow). Entering starts presenter + session. Exit stops the presenter first, so the
   session's final "offline" view never reaches the keys, then the session, then redraws home.
@@ -536,8 +539,9 @@ flowchart LR
 3. ✅ **Linux daemon**: home page from TOML (run/app/herdr keys), Herdr mode with Exit on key 1,
    agent keys, focus + raise of the herdr window (Hyprland), extra buttons, replug handling,
    uaccess udev rule, hardware probe. Verified on the M18.
-4. **Linux polish**: systemd `--user` unit + `scripts/install-linux.sh`, start on login. Paging, extra
-   buttons, animation and the udev rule were done in milestones 2–3.
+4. ✅ **Linux service**: systemd `--user` unit (`linux/herdr-dock.service`, bound to
+   `graphical-session.target`, restarts on failure) installed by `scripts/install-linux.sh`.
+   Home keys can also `focus = "<class regex>"` an existing Hyprland window before launching.
 5. **macOS plugin**: manifest, slot/pager/exit actions, visibility lifecycle, PyInstaller
    build, install + folder setup guide.
 

@@ -22,7 +22,20 @@ HOME = (
     HomeKey(1, "herdr", herdr=True, symbol="◐"),
     HomeKey(2, "Firefox", app="firefox"),
     HomeKey(3, "Build", run="make"),
+    HomeKey(4, "Browser", app="chromium", focus="^chromium$"),
+    HomeKey(5, "Logs", run="foot journalctl -f", focus="^logs$"),
+    HomeKey(6, "Zed", focus="zed"),
 )
+
+
+@dataclass
+class FakeFocuser:
+    existing: set[str] = field(default_factory=set)
+    asked: list[str] = field(default_factory=list)
+
+    async def focus_matching(self, pattern: str) -> bool:
+        self.asked.append(pattern)
+        return pattern in self.existing
 
 
 @dataclass
@@ -46,6 +59,7 @@ class Rig:
     session: HerdrSession
     presenter: DeckPresenter
     controller: DockController
+    focuser: FakeFocuser
 
     async def settle(self) -> None:
         """Let the session and presenter tasks run until the keys stop changing."""
@@ -59,7 +73,7 @@ class Rig:
 @pytest.fixture
 async def rig() -> AsyncIterator[Rig]:
     surface, herdr = FakeSurface(), InMemoryHerdr()
-    launcher, raiser = FakeLauncher(), RecordingRaiser()
+    launcher, raiser, focuser = FakeLauncher(), RecordingRaiser(), FakeFocuser({"^chromium$"})
     layout = KeyLayout(exit_key=True)
 
     async def no_sleep(_: float) -> None:
@@ -80,8 +94,9 @@ async def rig() -> AsyncIterator[Rig]:
         presenter,
         layout=layout,
         buttons={"left": "herdr", "middle": "none", "right": "page"},
+        focuser=focuser,
     )
-    yield Rig(surface, herdr, launcher, raiser, session, presenter, controller)
+    yield Rig(surface, herdr, launcher, raiser, session, presenter, controller, focuser)
     await controller.shutdown()
 
 
@@ -108,6 +123,19 @@ async def test_home_keys_launch(rig: Rig) -> None:
     assert rig.launcher.apps == ["firefox"]
     assert rig.launcher.runs == ["make"]
     assert rig.controller.mode is Mode.HOME
+
+
+async def test_focus_existing_window_or_launch(rig: Rig) -> None:
+    await rig.controller.handle(KeyPressed(3))  # chromium window exists → focused
+    assert rig.launcher.apps == []
+    await rig.controller.handle(KeyPressed(4))  # no logs window → run
+    assert rig.launcher.runs == ["foot journalctl -f"]
+    await rig.controller.handle(KeyPressed(5))  # focus-only key without a window → nothing
+    assert rig.focuser.asked == ["^chromium$", "^logs$", "zed"]
+    assert rig.launcher.apps == [] and rig.launcher.runs == ["foot journalctl -f"]
+    rig.focuser.existing.clear()
+    await rig.controller.handle(KeyPressed(3))  # no chromium window → launch
+    assert rig.launcher.apps == ["chromium"]
 
 
 async def test_enter_and_exit_herdr_mode(rig: Rig) -> None:

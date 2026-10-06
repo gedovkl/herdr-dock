@@ -1,0 +1,19 @@
+# herdr-dock systemd user unit. Installed by scripts/install-linux.sh, which fills in @ROOT@/@VENV@.
+[Unit]
+Description=herdr-dock: herdr agents on the StreamDock M18
+Documentation=https://github.com/gedovkl/herdr-dock
+# Needs the Wayland/Hyprland session (hyprctl for raising and focusing windows, uwsm-app for launching).
+PartOf=graphical-session.target
+After=graphical-session.target
+Requisite=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=@ROOT@
+ExecStart=@VENV@/bin/python -m linux.daemon
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=10
+
+[Install]
+WantedBy=graphical-session.target

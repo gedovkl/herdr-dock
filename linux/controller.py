@@ -21,6 +21,10 @@ class Launcher(Protocol):
     def app(self, app: str) -> None: ...
 
 
+class Focuser(Protocol):
+    async def focus_matching(self, pattern: str) -> bool: ...
+
+
 class Session(Protocol):
     async def start(self) -> None: ...
     async def stop(self) -> None: ...
@@ -53,6 +57,7 @@ class DockController:
         *,
         layout: KeyLayout,
         buttons: dict[str, str],
+        focuser: Focuser,
     ) -> None:
         self._surface = surface
         self._renderer = renderer
@@ -62,6 +67,7 @@ class DockController:
         self._presenter = presenter
         self._layout = layout
         self._buttons = buttons
+        self._focuser = focuser
         self._mode = Mode.HOME
         self._home_shown: dict[int, Face] = {}
 
@@ -129,9 +135,11 @@ class DockController:
             return
         if key.herdr:
             await self.enter_herdr()
+        elif key.focus and await self._focuser.focus_matching(key.focus):
+            return
         elif key.run:
             self._launcher.run(key.run)
-        else:
+        elif key.app:
             self._launcher.app(key.app)
 
     async def _button(self, action: str) -> None:

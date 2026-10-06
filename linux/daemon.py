@@ -26,7 +26,7 @@ from herdr_core.socket_path import resolve_socket_path
 from linux.config import HERDR_WINDOW, KEY_COUNT, LinuxConfig, load_linux_config
 from linux.controller import DockController
 from linux.device import DeviceError, DeviceInput, M18Device, StreamDockSdk
-from linux.hyprland import HerdrWindowRaiser
+from linux.hyprland import HerdrWindowRaiser, WindowFocuser
 from linux.launcher import ShellLauncher
 
 log = logging.getLogger("herdr_dock")
@@ -145,6 +145,7 @@ def build(
         presenter,
         layout=layout,
         buttons=dict(linux.buttons),
+        focuser=WindowFocuser(),
     )
     daemon = Daemon(device, controller, poll_seconds=linux.poll_seconds)
     holder.append(daemon.on_input)
