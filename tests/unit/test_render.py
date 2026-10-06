@@ -195,6 +195,8 @@ def test_clock_and_weather_faces_fit_their_text(renderer: KeyRenderer) -> None:
 
     for face in (
         ClockFace("14:07", "Mon 5 Oct"),
+        ClockFace("14:07", "Mon\n5 Oct"),
+        ClockFace("14:07", "a\nb\nc (only two rows are drawn)"),
         ClockFace("14:07:59"),
         ClockFace("a very long time format that cannot fit", "and a long date too, really"),
         WeatherFace("52°F", "☀", "Nashua"),

@@ -226,17 +226,20 @@ class KeyRenderer:
         return image
 
     def _clock_face(self, face: ClockFace) -> Image.Image:
+        """Time on top; the date below, one row per line of `face.date` (at most two)."""
         image, draw = self._canvas(self._bg)
         fg = hex_to_rgb(self._palette.light_text)
+        date_color = blend(fg, hex_to_rgb(self._palette.muted), 0.4)
         width = self._size - self._px(6)
-        time_font = self._font_to_fit(face.time, width, largest=22, smallest=9)
-        time_y = self._px(26) if face.date else self._half
-        draw.text((self._half, time_y), face.time, font=time_font, fill=fg, anchor="mm")
-        if face.date:
-            date_font = self._font_to_fit(face.date, width, largest=12, smallest=7)
-            date_color = blend(fg, hex_to_rgb(self._palette.muted), 0.4)
-            date_y = self._size - self._px(11)
-            draw.text((self._half, date_y), face.date, font=date_font, fill=date_color, anchor="mm")
+        rows = [line for line in face.date.split("\n") if line][:2]
+        # (time y, time max size, date row ys, date max size) in 64 px units
+        layouts = {0: (32, 22, (), 0), 1: (26, 22, (53,), 12), 2: (18, 20, (39, 54), 14)}
+        time_y, time_size, row_ys, row_size = layouts[len(rows)]
+        time_font = self._font_to_fit(face.time, width, largest=time_size, smallest=9)
+        draw.text((self._half, self._px(time_y)), face.time, font=time_font, fill=fg, anchor="mm")
+        for text, y in zip(rows, row_ys, strict=True):
+            font = self._font_to_fit(text, width, largest=row_size, smallest=7)
+            draw.text((self._half, self._px(y)), text, font=font, fill=date_color, anchor="mm")
         return image
 
     def _weather_face(self, face: WeatherFace) -> Image.Image:

@@ -28,7 +28,7 @@ class ClockWidget:
     def __init__(
         self,
         time_format: str = "%H:%M",
-        date_format: str = "%a %-d %b",
+        date_format: str = "%a\n%-d %b",
         now: Callable[[], datetime] = datetime.now,
     ) -> None:
         self._time_format = time_format

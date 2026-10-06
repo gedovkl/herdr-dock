@@ -6,7 +6,8 @@ What was built, in order, and what was learned along the way. Architecture and r
 ## Clock and weather keys
 
 - `widget = "clock"`: time and date with configurable `time_format`/`date_format` (strftime,
-  default `%a %-d %b`, so `Mon 5 Oct` without a zero-padded day).
+  default `%a\n%-d %b`: the day and the date on separate rows, so both are bigger, with no
+  zero-padded day).
   The text shrinks to fit 64 px keys instead of being cut off.
 - `widget = "weather"`: current conditions from Open-Meteo (no API key). `latitude`,
   `longitude`, `place`, `units` (celsius/fahrenheit) and `refresh_minutes` are set in the config.
