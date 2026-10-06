@@ -16,6 +16,7 @@ What was built, in order, and what was learned along the way. Architecture and r
 - All widgets share one interface (`face`, `press`, `advance`). Clock and weather pass presses
   through to `run`/`app`/`focus`.
 - The author's config, mirrored in `config.example.toml`: pomodoro on key 13, timer on key 14.
+- Verified on the M18: both keys toggle, count and redraw as described.
 
 ## Third code review fixes
 
