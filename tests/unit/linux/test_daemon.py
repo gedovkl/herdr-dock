@@ -149,10 +149,12 @@ def test_main_runs_until_stopped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     config.write_text('[linux]\nbrightness = 30\n[[home]]\nkey = 1\nlabel = "h"\nherdr = true\n')
     cwd = os.getcwd()
     try:
-        assert main(["--config", str(config), "--socket", "/x", "-v"]) == 0
+        assert main(["--config", str(config), "--socket", "rel/herdr.sock", "-v"]) == 0
     finally:
         os.chdir(cwd)
     assert len(served) == 1
+    client = served[0]._controller._session._api  # type: ignore[attr-defined]
+    assert client.socket_path == Path(cwd) / "rel/herdr.sock"  # absolute before any chdir
 
 
 async def test_serve_stops_on_signal(built: tuple[Daemon, FakeSdk]) -> None:
@@ -174,3 +176,35 @@ def test_focus_on_enter_wiring(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
         os.chdir(cwd)
     assert on._on_enter is not None
     assert off._on_enter is None
+
+
+async def test_replug_redraw_never_interleaves_with_key_handling(
+    built: tuple[Daemon, FakeSdk], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A home redraw and a herdr-key press must not run concurrently (keys would mix)."""
+    daemon, sdk = built
+    log: list[str] = []
+    release = asyncio.Event()
+
+    async def slow_redraw() -> None:
+        log.append("redraw-start")
+        await release.wait()
+        log.append("redraw-end")
+
+    async def handle(event: object) -> None:
+        log.append("press")
+
+    monkeypatch.setattr(daemon._controller, "redraw", slow_redraw)
+    monkeypatch.setattr(daemon._controller, "handle", handle)
+    sdk.plug(0x5548, 0x1000)
+    stop = asyncio.Event()
+    task = asyncio.create_task(daemon.run(stop))
+    await _until(lambda: "redraw-start" in log)
+    daemon.on_input(KeyPressed(0))
+    for _ in range(20):
+        await asyncio.sleep(0)
+    assert log == ["redraw-start"]  # the press waits for the redraw
+    release.set()
+    await _until(lambda: log == ["redraw-start", "redraw-end", "press"])
+    stop.set()
+    await task

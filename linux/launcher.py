@@ -6,6 +6,7 @@ import logging
 import shlex
 import subprocess
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ class ShellLauncher:
                 command,
                 shell=True,
                 start_new_session=True,  # survives daemon restarts, gets its own process group
+                cwd=Path.home(),  # not the daemon's working directory (the SDK's temp folder)
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,

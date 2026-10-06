@@ -3,6 +3,35 @@
 What was built, in order, and what was learned along the way. Architecture and rationale live in
 [DESIGN.md](DESIGN.md); setup is in [README.md](README.md).
 
+## Code review fixes
+
+A review of `herdr_core/`, `linux/` and `scripts/` found 7 issues. All were confirmed, and each fix
+comes with a test that failed before it:
+
+1. **Presenter retry**: after a failed key write, the presenter asked for another tick only if
+   something it had already checked was animating. A failed write on a static page wasn't
+   retried, and later blinking keys stopped. Now any failure schedules a retry tick, and
+   animation is evaluated across all keys.
+2. **Half-opened device leak**: if `open()`/`init()` failed while connecting, the SDK device was
+   never closed. Each 2 s retry leaked a handle and threads. It's now closed with `notify=False`.
+3. **Missing `hyprctl`**: `create_subprocess_exec` raised `FileNotFoundError`, so a home key with
+   `focus` never launched its app on non-Hyprland desktops. `run_exec` now returns 127, and any
+   focus failure falls through to launching.
+4. **Single-process terminals** (foot --server, Ghostty, kitty --single-instance): the raiser took
+   the first window listed for the PID. It now takes the most recently focused one. Hyprland can't
+   tell which of them holds the herdr TTY, so this remains a documented limitation.
+5. **Process-wide `chdir`** (needed by the SDK): relative icon paths now resolve against the
+   config file's folder, `run` commands start in `$HOME`, and the herdr socket path is made
+   absolute before connecting.
+6. **Replug redraw race**: the watcher redrew the home page concurrently with key handling.
+   Redraws now go through the same queue as presses.
+7. **Service unit quoting**: `ExecStart` is now quoted and `%` escaped by `linux/service.py`
+   (replacing `sed`), so paths with spaces, `&`, `|` or `%` work. Verified with
+   `systemd-analyze verify`.
+
+`config.example.toml` now uses the four home keys from the author's own setup (herdr, Browser,
+Merge, Zed).
+
 ## Linux hardening and home keys
 
 - **Unplug-safe device handling.** The vendor SDK can kill the process natively when it writes to

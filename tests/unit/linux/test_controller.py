@@ -216,3 +216,12 @@ async def test_entering_herdr_mode_raises_the_herdr_window(rig: Rig) -> None:
     await rig.controller.handle(ButtonPressed("left"))  # enter again; raiser fails, mode still on
     assert raised == ["herdr", "herdr"]
     assert rig.controller.mode is Mode.HERDR
+
+
+async def test_failing_focus_check_still_launches(rig: Rig) -> None:
+    async def broken(pattern: str) -> bool:
+        raise RuntimeError("hyprctl exploded")
+
+    rig.focuser.focus_matching = broken  # type: ignore[method-assign]
+    await rig.controller.handle(KeyPressed(3))
+    assert rig.launcher.apps == ["chromium"]

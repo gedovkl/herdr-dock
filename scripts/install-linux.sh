@@ -39,7 +39,7 @@ if pgrep -f "python -m linux.daemon" >/dev/null && ! systemctl --user -q is-acti
 fi
 
 mkdir -p "$unit_dir"
-sed -e "s|@VENV@|$VENV|g" -e "s|@ROOT@|$ROOT|g" "$ROOT/linux/herdr-dock.service" > "$unit"
+python -m linux.service "$ROOT/linux/herdr-dock.service" "$ROOT" "$VENV" > "$unit"
 log "installed $unit"
 
 systemctl --user daemon-reload

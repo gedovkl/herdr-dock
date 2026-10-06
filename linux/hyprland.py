@@ -25,10 +25,13 @@ class Process:
 
 
 async def run_exec(argv: Sequence[str], timeout: float = 5.0) -> tuple[int, str]:
-    """Run a command without a shell; returns (exit code, stdout)."""
-    process = await asyncio.create_subprocess_exec(
-        *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
-    )
+    """Run a command without a shell; returns (exit code, stdout). 127 = couldn't start it."""
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
+        )
+    except OSError:
+        return 127, ""
     try:
         out, _ = await asyncio.wait_for(process.communicate(), timeout)
     except TimeoutError:
@@ -73,19 +76,24 @@ def herdr_clients(processes: Iterable[Process]) -> list[Process]:
 def window_for(
     clients: Iterable[Process], processes: dict[int, Process], windows: Sequence[dict[str, object]]
 ) -> str | None:
-    """Address of the most recently focused window that is an ancestor of a herdr client."""
-    by_pid: dict[int, dict[str, object]] = {}
+    """Address of the most recently focused window owned by an ancestor of a herdr client.
+
+    Single-process terminals (foot --server, Ghostty, kitty --single-instance) own several
+    windows from one PID and Hyprland can't tell which holds the herdr TTY, so the most
+    recently focused of them is used.
+    """
+    by_pid: dict[int, list[dict[str, object]]] = {}
     for window in windows:
         pid = window.get("pid")
         if isinstance(pid, int):
-            by_pid.setdefault(pid, window)
-    candidates = []
+            by_pid.setdefault(pid, []).append(window)
+    candidates: list[dict[str, object]] = []
     for client in clients:
         pid, seen = client.pid, set()
         while pid > 1 and pid not in seen:
             seen.add(pid)
             if pid in by_pid:
-                candidates.append(by_pid[pid])
+                candidates.extend(by_pid[pid])
                 break
             parent = processes.get(pid)
             if parent is None:
@@ -93,8 +101,7 @@ def window_for(
             pid = parent.ppid
     if not candidates:
         return None
-    best = min(candidates, key=lambda w: _history(w))
-    address = best.get("address")
+    address = min(candidates, key=_history).get("address")
     return address if isinstance(address, str) else None
 
 

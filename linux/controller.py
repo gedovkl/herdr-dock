@@ -142,12 +142,20 @@ class DockController:
             return
         if key.herdr:
             await self.enter_herdr()
-        elif key.focus and await self._focuser.focus_matching(key.focus):
+        elif key.focus and await self._focus(key.focus):
             return
         elif key.run:
             self._launcher.run(key.run)
         elif key.app:
             self._launcher.app(key.app)
+
+    async def _focus(self, pattern: str) -> bool:
+        """Focus a matching window; any failure means "no window", so the key launches instead."""
+        try:
+            return await self._focuser.focus_matching(pattern)
+        except Exception:
+            log.warning("focusing a %r window failed", pattern, exc_info=True)
+            return False
 
     async def _button(self, action: str) -> None:
         if action == "herdr":

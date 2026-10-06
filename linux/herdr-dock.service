@@ -1,4 +1,4 @@
-# herdr-dock systemd user unit. Installed by scripts/install-linux.sh, which fills in @ROOT@/@VENV@.
+# herdr-dock systemd user unit template. scripts/install-linux.sh renders it with linux/service.py.
 [Unit]
 Description=herdr-dock: herdr agents on the StreamDock M18
 Documentation=https://github.com/gedovkl/herdr-dock
@@ -10,7 +10,7 @@ Requisite=graphical-session.target
 [Service]
 Type=simple
 WorkingDirectory=@ROOT@
-ExecStart=@VENV@/bin/python -m linux.daemon
+ExecStart=@PYTHON@ -m linux.daemon
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=10

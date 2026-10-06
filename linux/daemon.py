@@ -32,6 +32,13 @@ from linux.launcher import ShellLauncher
 log = logging.getLogger("herdr_dock")
 
 
+class _Redraw:
+    """Queue item: repaint the dock (after a replug), in order with key presses."""
+
+
+_REDRAW = _Redraw()
+
+
 def default_workdir(env: dict[str, str] | os._Environ[str] = os.environ) -> Path:
     base = env.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
     return Path(base) / "herdr-dock"
@@ -61,7 +68,8 @@ class Daemon:
         self._poll = poll_seconds
         self._alive = alive_seconds
         self._sleep = sleep
-        self._inputs: asyncio.Queue[DeviceInput] = asyncio.Queue()
+        # Key presses and redraws share one queue so they never run concurrently.
+        self._inputs: asyncio.Queue[DeviceInput | _Redraw] = asyncio.Queue()
         self._last_error = ""
         self._announced_wait = False
 
@@ -89,7 +97,10 @@ class Daemon:
         while True:
             event = await self._inputs.get()
             try:
-                await self._controller.handle(event)
+                if isinstance(event, _Redraw):
+                    await self._controller.redraw()
+                else:
+                    await self._controller.handle(event)
             except Exception:
                 log.exception("handling %s failed", event)
 
@@ -116,7 +127,7 @@ class Daemon:
     async def _try_connect(self) -> None:
         if await self._device.connect():
             self._last_error, self._announced_wait = "", False
-            await self._controller.redraw()
+            self._inputs.put_nowait(_REDRAW)
         elif not self._announced_wait:
             log.info("waiting for the M18 to be plugged in")
             self._announced_wait = True
@@ -196,7 +207,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     except ConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    socket = resolve_socket_path(args.socket or config.herdr_socket, os.environ, Path.home())
+    # Absolute now: the device later changes the working directory for the SDK.
+    socket = resolve_socket_path(
+        args.socket or config.herdr_socket, os.environ, Path.home()
+    ).absolute()
     log.info("herdr socket: %s", socket)
     daemon, _ = build(config, linux, socket, default_workdir())
     asyncio.run(serve(daemon))

@@ -208,3 +208,17 @@ async def test_tries_ids_in_order(tmp_path: Path) -> None:
     finally:
         await device.shutdown()
         os.chdir(cwd)
+
+
+@pytest.mark.parametrize("failure", ["open", "init"])
+async def test_failed_connect_closes_the_half_opened_device(
+    rig: tuple[FakeSdk, M18Device, list[DeviceInput]], failure: str
+) -> None:
+    sdk, device, _ = rig
+    sdk.plug(0x5548, 0x1000)
+    sdk.open_result = failure != "open"
+    sdk.fail_init = failure == "init"
+    with pytest.raises((DeviceError, OSError)):
+        await device.connect()
+    assert not device.connected
+    assert sdk.created[0].calls[-1] == ("close-removed",)  # released, without the disconnect write

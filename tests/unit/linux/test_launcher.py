@@ -1,4 +1,5 @@
 import subprocess
+from pathlib import Path
 from typing import Any
 
 from linux.launcher import ShellLauncher
@@ -22,6 +23,7 @@ def test_run_detaches() -> None:
     assert command == "make build"
     assert kwargs["shell"] and kwargs["start_new_session"]
     assert kwargs["stdout"] is subprocess.DEVNULL
+    assert kwargs["cwd"] == Path.home()  # not the daemon's SDK work directory
 
 
 def test_app_uses_quoted_launcher_template() -> None:

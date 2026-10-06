@@ -77,12 +77,15 @@ class DeckPresenter:
         self._shown.clear()
 
     async def push(self) -> bool:
-        """Send changed keys for the current time. Returns True if anything is animated."""
+        """Send changed keys for the current time.
+
+        Returns True if another tick is needed: something animates, or a key failed to send
+        and must be retried even if nothing else changes.
+        """
         now = self._clock()
-        animated = False
-        for key, face in enumerate(self._faces):
-            effect = self._animator.effect(face)
-            animated = animated or effect is not Effect.NONE
+        effects = [self._animator.effect(face) for face in self._faces]
+        animated = any(effect is not Effect.NONE for effect in effects)
+        for key, (face, effect) in enumerate(zip(self._faces, effects, strict=True)):
             shown = (face, effect, self._animator.frame(effect, now))
             if self._shown.get(key) == shown:
                 continue
@@ -90,11 +93,11 @@ class DeckPresenter:
             try:
                 await self._surface.show(key, png)
             except Exception as exc:
-                # Log once per failure streak; unsent keys are retried on the next push.
+                # Log once per failure streak; the remaining keys go out on the retry tick.
                 if not self._failing:
                     log.warning("showing key %s failed: %s", key, exc)
                     self._failing = True
-                return animated or self._animator.effect(face) is not Effect.NONE
+                return True
             self._failing = False
             self._shown[key] = shown
         return animated

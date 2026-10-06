@@ -16,6 +16,7 @@ class FakeSdkDevice:
     images: dict[int, bytes] = field(default_factory=dict)
     callback: Callable[[Any, Any], None] | None = None
     fail_close: bool = False
+    fail_init: bool = False
 
     def open(self) -> bool:
         self.calls.append(("open",))
@@ -23,6 +24,8 @@ class FakeSdkDevice:
 
     def init(self) -> None:
         self.calls.append(("init",))
+        if self.fail_init:
+            raise OSError("init failed")
 
     def set_brightness(self, percent: int) -> None:
         self.calls.append(("brightness", percent))
@@ -58,6 +61,7 @@ class FakeSdk:
     devices: dict[tuple[int, int], list[dict[str, Any]]] = field(default_factory=dict)
     created: list[FakeSdkDevice] = field(default_factory=list)
     open_result: bool = True
+    fail_init: bool = False
 
     def plug(self, vid: int, pid: int, path: str = "/dev/hidraw7") -> None:
         self.devices.setdefault((vid, pid), []).append({"path": path})
@@ -69,6 +73,6 @@ class FakeSdk:
         return list(self.devices.get((vendor_id, product_id), []))
 
     def create(self, info: dict[str, Any]) -> FakeSdkDevice:
-        device = FakeSdkDevice(info, open_result=self.open_result)
+        device = FakeSdkDevice(info, open_result=self.open_result, fail_init=self.fail_init)
         self.created.append(device)
         return device

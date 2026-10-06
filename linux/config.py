@@ -67,10 +67,11 @@ def load_linux_config(path: Path | None = None) -> LinuxConfig:
         return LinuxConfig()
     except tomllib.TOMLDecodeError as exc:
         raise ConfigError(f"{path}: {exc}") from exc
-    return parse_linux_config(data)
+    return parse_linux_config(data, base_dir=path.parent)
 
 
-def parse_linux_config(data: Mapping[str, Any]) -> LinuxConfig:
+def parse_linux_config(data: Mapping[str, Any], base_dir: Path | None = None) -> LinuxConfig:
+    """`base_dir`: where relative icon paths are resolved (the config file's folder)."""
     raw = data.get("linux", {})
     if not isinstance(raw, Mapping):
         raise ConfigError("[linux] must be a table")
@@ -97,7 +98,7 @@ def parse_linux_config(data: Mapping[str, Any]) -> LinuxConfig:
         brightness=brightness,
         device_ids=_device_ids(raw.get("device_ids")) or defaults.device_ids,
         app_launcher=launcher,
-        home=_home(data.get("home")) or defaults.home,
+        home=_home(data.get("home"), base_dir or Path.cwd()) or defaults.home,
         buttons=_buttons(raw.get("buttons", {}), defaults.buttons),
         poll_seconds=float(poll),
         focus_herdr_on_enter=focus_on_enter,
@@ -138,7 +139,7 @@ def _buttons(raw: object, defaults: Mapping[str, str]) -> dict[str, str]:
     return buttons
 
 
-def _home(raw: object) -> tuple[HomeKey, ...]:
+def _home(raw: object, base_dir: Path) -> tuple[HomeKey, ...]:
     if raw is None:
         return ()
     if not isinstance(raw, list):
@@ -158,7 +159,7 @@ def _home(raw: object) -> tuple[HomeKey, ...]:
             run=_text(entry, "run", key),
             app=_text(entry, "app", key),
             herdr=_flag(entry, "herdr", key),
-            icon=os.path.expanduser(_text(entry, "icon", key)),
+            icon=_path(_text(entry, "icon", key), base_dir),
             symbol=_text(entry, "symbol", key),
             focus=_text(entry, "focus", key),
         )
@@ -177,6 +178,13 @@ def _home(raw: object) -> tuple[HomeKey, ...]:
                 raise ConfigError(f"home key {key}: invalid focus pattern: {exc}") from None
         keys.append(home_key)
     return tuple(keys)
+
+
+def _path(value: str, base_dir: Path) -> str:
+    """Absolute path: the daemon changes its working directory for the SDK."""
+    if not value:
+        return ""
+    return str(base_dir / Path(value).expanduser())
 
 
 def _text(entry: Mapping[str, Any], name: str, key: int) -> str:

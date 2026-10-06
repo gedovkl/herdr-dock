@@ -151,3 +151,45 @@ async def test_run_loop_real_tick() -> None:
     await _until(lambda: surface.shown.get(0) == RENDERER.render(face, Effect.SPIN, 2))
     await presenter.stop()
     assert slept and set(slept) == {0.25}
+
+
+async def test_failure_schedules_a_retry_even_when_nothing_animates() -> None:
+    surface, clock = FakeSurface(fail_keys={0}), FakeClock()
+    presenter = DeckPresenter(
+        surface, RENDERER, Animator(), layout=KeyLayout(exit_key=False), clock=clock
+    )
+    presenter.update(view(S.IDLE, S.IDLE))
+    assert await presenter.push()  # key 0 failed: ask for another tick to retry it
+
+
+async def test_failure_still_reports_animation_of_later_keys() -> None:
+    surface, clock = FakeSurface(fail_keys={0}), FakeClock()
+    presenter = DeckPresenter(
+        surface, RENDERER, Animator(), layout=KeyLayout(exit_key=False), clock=clock
+    )
+    presenter.update(view(S.IDLE, S.BLOCKED))
+    assert await presenter.push()
+    surface.fail_keys.clear()
+    assert await presenter.push()  # key 1 blinks: keep ticking after the retry succeeded
+    assert sorted(surface.shown) == [0, 1, 2]
+
+
+async def test_run_loop_retries_failed_keys_without_new_views() -> None:
+    surface, clock = FakeSurface(fail_keys={0}), FakeClock()
+    slept: list[float] = []
+
+    async def sleep(seconds: float) -> None:
+        slept.append(seconds)
+        surface.fail_keys.clear()  # the device recovers before the retry tick
+        await asyncio.sleep(0)
+
+    presenter = DeckPresenter(
+        surface, RENDERER, Animator(), layout=KeyLayout(exit_key=False), clock=clock, sleep=sleep
+    )
+    presenter.update(view(S.IDLE))
+    await presenter.start()
+    try:
+        await _until(lambda: 0 in surface.shown)
+    finally:
+        await presenter.stop()
+    assert slept  # a retry tick was scheduled although nothing animates

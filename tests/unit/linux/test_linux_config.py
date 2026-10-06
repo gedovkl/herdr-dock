@@ -125,3 +125,12 @@ def test_invalid_toml(tmp_path: Path) -> None:
 def test_errors(data: dict[str, object], message: str) -> None:
     with pytest.raises(ConfigError, match=message):
         parse_linux_config(data)
+
+
+def test_relative_icons_resolve_against_the_config_folder(tmp_path: Path) -> None:
+    """The daemon changes its working directory, so relative paths must not depend on it."""
+    path = tmp_path / "config.toml"
+    path.write_text('[[home]]\nkey = 1\nlabel = "x"\nrun = "x"\nicon = "icons/x.png"\n')
+    assert load_linux_config(path).home[0].icon == str(tmp_path / "icons/x.png")
+    absolute = parse_linux_config({"home": [{"key": 1, "run": "x", "icon": "/abs/x.png"}]})
+    assert absolute.home[0].icon == "/abs/x.png"

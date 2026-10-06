@@ -163,3 +163,25 @@ async def test_window_focuser() -> None:
 
 async def test_windows_must_be_a_list() -> None:
     assert await Hyprland(Hyprctl(clients={"not": "a list"})).windows() is None
+
+
+async def test_missing_binary_is_a_failure_not_an_exception() -> None:
+    assert await run_exec(["definitely-not-installed-hyprctl"]) == (127, "")
+
+
+async def test_without_hyprctl_focus_and_raise_degrade_quietly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PATH", "/nonexistent")
+    assert not await WindowFocuser().focus_matching("^chromium$")
+    await HerdrWindowRaiser(processes=lambda: PROCESSES).raise_window(AGENT)
+
+
+def test_single_process_terminal_picks_its_most_recent_window() -> None:
+    """foot --server / ghostty / kitty --single-instance own several windows from one PID."""
+    windows = [
+        {"pid": 200, "address": "0xfoot-old", "focusHistoryID": 7},
+        {"pid": 200, "address": "0xfoot-recent", "focusHistoryID": 2},
+    ]
+    clients = [p for p in herdr_clients(PROCESSES.values()) if p.pid == 220]
+    assert window_for(clients, PROCESSES, windows) == "0xfoot-recent"

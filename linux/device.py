@@ -178,13 +178,21 @@ class M18Device:
         self._workdir.mkdir(parents=True, exist_ok=True)
         os.chdir(self._workdir)  # the SDK writes temporary JPEGs into the working directory
         device = self._sdk.create(info)
-        if not device.open():
-            raise DeviceError(f"opening {path} failed")
-        device.init()
-        device.set_brightness(self._brightness)
-        device.clearAllIcon()
-        device.refresh()
-        device.set_raw_read_callback(self._raw)
+        try:
+            if not device.open():
+                raise DeviceError(f"opening {path} failed")
+            device.init()
+            device.set_brightness(self._brightness)
+            device.clearAllIcon()
+            device.refresh()
+            device.set_raw_read_callback(self._raw)
+        except BaseException:
+            # Release the half-opened device (its SDK threads/handle); no writes, state unknown.
+            try:
+                device.close(notify=False)
+            except Exception:
+                log.debug("error releasing half-opened M18", exc_info=True)
+            raise
         self._device, self._path = device, path
         log.info("M18 connected at %s", path)
         return True

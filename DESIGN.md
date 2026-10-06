@@ -563,3 +563,8 @@ flowchart LR
 - **Animation rate on macOS**: measure `setImage` through the StreamDock app, and check whether it
   accepts an animated GIF data URL and plays it.
 - **Multiple herdr sessions**: out of scope for now. The client already takes a socket path.
+- **Raising with single-process terminals** (foot --server, Ghostty single-instance,
+  kitty --single-instance): one PID owns every window, and Hyprland exposes no TTY per window, so
+  the raiser focuses that terminal's most recently used window, which may not be the herdr
+  one. Workaround: run herdr in its own terminal process, or set `[raise] linux` to a command that
+  matches the herdr window title (`window_title` in herdr's config).

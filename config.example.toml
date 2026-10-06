@@ -65,15 +65,31 @@ label = "herdr"
 symbol = "◐"
 herdr = true
 
-# [[home]]                       # example: open the browser, or focus it if it's running
-# key = 2
-# label = "Browser"
-# icon = "/usr/share/icons/hicolor/128x128/apps/chromium.png"
-# app = "chromium"
-# focus = "^chromium$"
+# Focus the running app, or launch it if it isn't running. Icon paths are from Arch packages;
+# adjust them, and the window classes (`hyprctl clients -j | jq -r '.[].class'`), for your system.
+[[home]]
+key = 2
+label = "Browser"
+icon = "/usr/share/icons/hicolor/128x128/apps/chromium.png"
+app = "chromium"
+focus = "^chromium$"
 
-# [[home]]                       # example
-# key = 3
+[[home]]
+key = 3
+label = "Merge"
+icon = "/usr/share/icons/hicolor/128x128/apps/sublime-merge.png"
+app = "sublime_merge.desktop"     # desktop entry ID: the binary isn't on PATH
+focus = "^sublime_merge$"
+
+[[home]]
+key = 4
+label = "Zed"
+icon = "/usr/share/icons/hicolor/512x512/apps/zed.png"
+app = "dev.zed.Zed.desktop"
+focus = "^dev\\.zed\\.Zed$"
+
+# [[home]]                       # example: a shell command
+# key = 5
 # label = "Lock"
 # symbol = "⏻"
 # run = "omarchy-lock-screen"
