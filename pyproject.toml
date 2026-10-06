@@ -24,6 +24,9 @@ macos = ["websocket-client>=1.8", "pyinstaller>=6.12"]
 [tool.setuptools.packages.find]
 include = ["herdr_core*", "linux*", "macos*"]
 
+[tool.setuptools.package-data]
+herdr_core = ["fonts/*.ttf", "fonts/*.txt"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

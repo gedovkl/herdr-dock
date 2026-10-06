@@ -39,7 +39,7 @@ These rules are binding for all code in this repo. A change that breaks one isn'
 | **S**ingle responsibility | One reason to change per class: `HerdrClient` = protocol/transport, `AgentStore` = state + slot assignment, `Pager` = paging, `KeyRenderer` = pixels, `Animator` = timing, `WindowRaiser` = OS command, `HerdrSession` = orchestration only. Front ends only map keys and push images. |
 | **O**pen/closed | New statuses, glyphs, colours or label styles come from data (theme/config tables), not `if` chains. New front ends (another device, Windows) are new adapters, with no edits to `herdr_core`. New home-page key types register a handler and don't change the dispatcher. |
 | **L**iskov substitution | Every implementation of a port must pass the same **contract test suite** (`tests/contracts/`). `FakeDevice`, the SDK device adapter and the app adapter are interchangeable from the session's point of view. |
-| **I**nterface segregation | Small `typing.Protocol` ports instead of one big interface: `HerdrApi` (list/focus), `HerdrEvents` (subscribe), `KeySurface` (`show(slot, png)`, `slot_count`), `KeyInput` (press callbacks), `Raiser`, `Clock`. Consumers depend only on what they use. |
+| **I**nterface segregation | Small `typing.Protocol` ports instead of one big interface: `HerdrApi` (list/focus), `HerdrEventSource` + `EventStream` (subscribe), `KeySurface` (`show(key, png)`), `Raiser`, `Clock`, `Sleep`. Key input reaches the core as plain `press(index)` calls from the front end. Consumers depend only on what they use. |
 | **D**ependency inversion | `herdr_core` depends on those Protocols, never on the StreamDock SDK, the plugin SDK, `subprocess`, sockets or `time` directly. Concrete adapters are wired up in one composition root per front end (`linux/daemon.py`, `macos/plugin_main.py`). |
 
 ### Code conventions
@@ -296,29 +296,56 @@ Symbols and colour roles match herdr's sidebar with `status_indicators = "symbol
 (herdr source, `src/client/shell.rs`: `status_icon` and `status_color`). An agent looks the
 same on the dock as in herdr.
 
-| Status   | herdr symbol | herdr colour role | Default key colour | Animation |
-|----------|:-----:|-------------|----------------|-----------|
-| blocked  | `×`   | red         | `#e64553` | **Blink**: alternate the full-colour frame with an inverted/dark frame (default 2 Hz) |
-| done     | `✓`   | teal        | `#179299` | **Slow pulse** (optional): bright/dim every ~1.5 s until seen |
-| working  | `◐`   | yellow      | `#df8e1d` | **Spinner**: `◐ ◓ ◑ ◒` rotating (default 4 frames/s) |
-| idle     | `○`   | green       | `#40a02b` | static |
-| unknown  | `·`   | overlay0    | `#7c7f93` | static |
-| focused  | —     | —           | white 2 px border | static overlay on top of any state |
-| offline  | —     | —           | black, `herdr offline` | static |
+| Status   | herdr symbol | herdr colour role | Default colour | Key style | Animation |
+|----------|:-----:|-------------|-----------|-----------|-----------|
+| blocked  | `×`   | red         | `#e64553` | filled    | **Blink**: full red ↔ dark key with red `×` (2 Hz) |
+| done     | `✓`   | teal        | `#179299` | filled    | **Pulse** (opt-in via `attention`): full ↔ dimmed (0.7 Hz) |
+| working  | `◐`   | yellow      | `#df8e1d` | filled    | **Spinner**: `◐ ◓ ◑ ◒` (4 frames/s) |
+| idle     | `○`   | green       | `#40a02b` | dark key, green symbol | static |
+| unknown  | `·`   | overlay0    | `#7c7f93` | dark key, gray symbol  | static |
+| focused  | —     | —           | `#ffffff` | 2 px white border on top of any state | static |
+| empty    | —     | —           | black     | blank | static |
+| offline  | —     | —           | black     | muted `herdr` / `offline` | static |
 
-- **Needs attention** means `blocked`, which always blinks. Making `done` pulse is a
-  config option (`attention = ["blocked", "done"]`), so unseen finished work also catches your
-  eye. Pressing the key focuses the agent, herdr marks it seen (done becomes idle), and
-  the animation stops by itself.
-- Key layout: the large status symbol in the centre, the agent kind (`claude`, `codex`, …) above it
-  in small text, and the label below it. The default label is the cwd basename, and
-  `label = "title" | "cwd" | "name"` changes it.
-- Colours are overridable in config (`[colors]`). Default hex values follow herdr's
-  Catppuccin-style palette roles (red, teal, yellow, green, overlay0).
-- Font: bundle **DejaVu Sans** (permissive licence). It covers `× ✓ ◐ ◓ ◑ ◒ ○ ·`, so keys
-  render the same on Linux and macOS whatever fonts are installed.
-- The Exit key and pager also blink red when an agent on another page (or any agent, for Exit) is
-  `blocked`.
+The **Exit** key shows `◀ herdr` plus one dot per status present, most urgent first. The
+**pager** shows `▶ 1/3` plus dots for the statuses on other pages. Both blink red when a
+blocked agent is in their scope, or pulse when only `done` is (with `done` in `attention`).
+
+- Idle and unknown keys are dark, with only the symbol coloured, so quiet agents stay quiet and
+  full-colour keys always mean something is happening. This is a change from the first draft,
+  which filled idle keys green.
+- **Needs attention** means `blocked`, which always blinks. Adding `done` to
+  `attention = ["blocked", "done"]` makes unseen finished work pulse. Pressing the key focuses
+  the agent, herdr marks it seen (done becomes idle), and the animation stops by itself.
+- Layout: the agent kind (`claude`, `codex`, …) at the top, the large status symbol in the
+  centre, and the label at the bottom, ellipsised to fit. Text is dark or light depending on
+  the background's luminance. `label = "cwd" | "title" | "name"`.
+- Colours: `[colors]` in config overrides any status colour (`blocked = "#ff0000"`).
+- Fonts are bundled in `herdr_core/fonts/`: **DejaVu Sans** for the symbols and **DejaVu Sans
+  Condensed Bold** for the text, with the DejaVu licence. They cover `× ✓ ◐ ◓ ◑ ◒ ○ · ▶ ◀ …`,
+  so keys look identical on Linux and macOS.
+- `scripts/render-preview.sh` writes every face and frame plus `sheet.png` to `build/preview/`.
+
+### Rendering pipeline
+
+```mermaid
+flowchart LR
+    view["SessionView<br/>(HerdrSession.on_view)"] --> faces["faces_for()<br/>→ Face per key<br/>Exit · Agent · Empty · Pager · Offline"]
+    faces --> anim["Animator<br/>effect(face) · frame(effect, now)"]
+    anim --> render["KeyRenderer<br/>render(face, effect, frame) → PNG<br/>LRU cache"]
+    render --> surface["KeySurface.show(key, png)<br/>(front-end adapter)"]
+    clock(["one clock / ticker"]) --> anim
+```
+
+- `faces.py`: `SessionView` → immutable `Face` values (what to show, no pixels).
+  `KeyLayout` maps physical keys: with `exit_key`, key 0 is Exit and keys 1.. are session keys.
+- `animation.py`: `Animator` decides each face's `Effect` (none/spin/blink/pulse) and its frame
+  as a pure function of time.
+- `render.py`: `KeyRenderer` draws `(face, effect, frame)` to PNG bytes at any size (64 px for the
+  M18, larger for the macOS app) and caches them.
+- `presenter.py`: `DeckPresenter` is the session's `on_view` target. It sends only keys whose
+  `(face, effect, frame)` changed to a `KeySurface`, and runs the ticker only while something is
+  animated. `invalidate()` redraws everything after a device replug.
 
 ### Animation: how it works
 
@@ -328,19 +355,17 @@ There's no on-device animation. Both platforms swap static frames from the host:
   app plays frame by frame. A plugin gets the same effect by calling `setImage` repeatedly.
 - **Linux SDK:** `set_key_gif` and `GifController` also stream frames from the host.
 
-So `herdr_core` owns one **animation ticker**:
+So `herdr_core` owns one ticker, in `DeckPresenter`:
 
-- Every frame is pre-rendered when the state changes and cached by
-  `(kind, label, status, focused, frame)`, so a tick only pushes bytes and never renders.
-- One asyncio timer ticks at the least common multiple needed (4 Hz). Each animated key advances
-  only on its own beat: blink at 2 Hz, spinner at 4 Hz, done pulse at about 0.7 Hz.
-- Ticks are only sent for keys that are **visible and animated**. Static keys get no
-  traffic, and nothing ticks outside Herdr mode.
-- Blinks are in phase across keys, so several blocked agents flash together instead of
-  flickering out of step.
-- Config: `animate = true`, `blink_hz = 2`, `spinner_fps = 4`, `attention = ["blocked"]`.
-  If the device or app can't keep up (see Open items), the spinner drops to a static `◐`
-  but blocked keeps blinking, because blinking matters most.
+- Frames are rendered once and cached by `(face, effect, frame)`, so a tick mostly re-sends
+  cached bytes.
+- The ticker wakes every `1 / max(spinner_fps, 2·blink_hz, 2·pulse_hz)` seconds (0.25 s by
+  default). Each key's frame comes from the same clock reading, so blinks stay in phase.
+- Only keys whose frame actually changed are sent. With nothing animated there is no ticker at
+  all, and nothing ticks outside Herdr mode, because the presenter is stopped there.
+- Config: `animate = true`, `blink_hz = 2`, `spinner_fps = 4`, `pulse_hz = 0.7`,
+  `attention = ["blocked"]`. If the device or app can't keep up (see Open items), lower
+  `spinner_fps` or set `animate = false`.
 
 ### Ordering & paging
 
@@ -444,7 +469,12 @@ run = "cd ~/Projects/foo && make"
 | `pyproject.toml` | Package metadata and dependencies |
 | `herdr_core/client.py` | Socket RPC, subscription stream, reconnect/backoff |
 | `herdr_core/store.py` | AgentStore, slots, paging |
-| `herdr_core/render.py` | Pillow key renderer, frame cache (PNG bytes), bundled DejaVu Sans |
+| `herdr_core/faces.py` | `SessionView` → per-key `Face` values, `KeyLayout` |
+| `herdr_core/animation.py` | `Animator`, `AnimationConfig`, spinner frames |
+| `herdr_core/render.py` | Pillow key renderer, palette, LRU frame cache (PNG bytes) |
+| `herdr_core/presenter.py` | `DeckPresenter`: views → changed keys on a `KeySurface`, animation ticker |
+| `herdr_core/preview.py` | `python -m herdr_core.preview`: every face/frame + contact sheet |
+| `herdr_core/fonts/` | DejaVu Sans + DejaVu Sans Condensed Bold, DejaVu licence |
 | `herdr_core/session.py` | HerdrSession (start/stop/press/next_page → on_view(SessionView)) |
 | `herdr_core/paging.py`, `backoff.py`, `events.py`, `models.py`, `errors.py`, `theme.py`, `socket_path.py` | Page layout, reconnect delays, typed events, value objects, typed errors, herdr symbols, socket discovery |
 | `herdr_core/console.py` | `python -m herdr_core.console`: live agent states in the terminal |
@@ -455,7 +485,7 @@ run = "cd ~/Projects/foo && make"
 | `macos/com.herdr.dock.sdPlugin/` | `manifest.json`, `static/img/`, `propertyInspector/slot/index.html` |
 | `macos/plugin_main.py` | Python plugin SDK actions → HerdrSession |
 | `macos/plugin.spec` | PyInstaller build |
-| `herdr_core/ports.py` | `typing.Protocol` ports: `HerdrApi`, `HerdrEvents`, `KeySurface`, `KeyInput`, `Raiser`, `Clock` |
+| `herdr_core/ports.py` | `typing.Protocol` ports: `HerdrApi`, `HerdrEventSource`, `EventStream`, `KeySurface`, `Raiser`, `Clock`, `Sleep` |
 | `tests/unit/` | Store/paging/render/animator/session tests |
 | `tests/contracts/` | Shared contract suites that every port implementation must pass |
 | `tests/fakes/` | `FakeHerdrServer`, `FakeDevice`, `FakeAppConnection`, `FakeClock` |
@@ -487,7 +517,8 @@ flowchart LR
 1. ✅ **herdr_core**: client, store, paging, session, raiser, config, and a console printer
    (`scripts/run-console.sh`). Tests use a fake socket server, in-memory fakes, shared port
    contracts and live tests against a throwaway herdr session. 99 % branch coverage.
-2. **render.py**: render keys to PNG files for visual review.
+2. ✅ **Rendering**: faces, animator, Pillow renderer with bundled fonts, `DeckPresenter`
+   with one in-phase ticker, `[colors]`/animation config, and `scripts/render-preview.sh`.
 3. **Linux daemon**: home page from TOML (run/app/herdr keys), Herdr mode with Exit,
    agent keys, focus + raise.
 4. **Linux polish**: paging, extra inputs, working animation, systemd unit, udev check.

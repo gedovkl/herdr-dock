@@ -29,8 +29,15 @@ class HerdrEventSource(Protocol):
         ...
 
 
+class KeySurface(Protocol):
+    """Somewhere key images go: the M18 via the Device SDK, or the StreamDock app."""
+
+    async def show(self, key: int, png: bytes) -> None: ...
+
+
 class Raiser(Protocol):
     async def raise_window(self, agent: Agent) -> None: ...
 
 
 Sleep = Callable[[float], Awaitable[None]]
+Clock = Callable[[], float]

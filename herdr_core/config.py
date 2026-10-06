@@ -4,17 +4,20 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
-from herdr_core.models import LabelStyle
+from herdr_core.animation import AnimationConfig
+from herdr_core.models import AgentStatus, LabelStyle
 
 log = logging.getLogger(__name__)
 
 _LABEL_STYLES: tuple[LabelStyle, ...] = ("cwd", "title", "name")
+_HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
 class ConfigError(Exception):
@@ -34,6 +37,9 @@ class Config:
     label: LabelStyle = "cwd"
     resync_seconds: float = 30.0
     raise_window: RaiseConfig = field(default_factory=RaiseConfig)
+    animation: AnimationConfig = field(default_factory=AnimationConfig)
+    colors: Mapping[AgentStatus, str] = field(default_factory=dict)
+    """Status colour overrides (#rrggbb)."""
 
 
 def default_config_path(env: Mapping[str, str], home: Path) -> Path:
@@ -59,23 +65,79 @@ def load_config(path: Path | None = None) -> Config:
 
 
 def parse_config(data: Mapping[str, Any]) -> Config:
-    known = {"herdr_socket", "label", "resync_seconds", "raise"}
+    known = {
+        "herdr_socket",
+        "label",
+        "resync_seconds",
+        "raise",
+        "animate",
+        "blink_hz",
+        "spinner_fps",
+        "pulse_hz",
+        "attention",
+        "colors",
+    }
     for key in sorted(set(data) - known):
         log.debug("ignoring config key %r (not used by herdr_core)", key)
 
     label = data.get("label", "cwd")
     if label not in _LABEL_STYLES:
         raise ConfigError(f"label must be one of {', '.join(_LABEL_STYLES)}, got {label!r}")
-    resync = data.get("resync_seconds", 30.0)
-    if isinstance(resync, bool) or not isinstance(resync, int | float) or resync <= 0:
-        raise ConfigError(f"resync_seconds must be a positive number, got {resync!r}")
+    resync = _positive(data, "resync_seconds", 30.0)
 
     return Config(
         herdr_socket=_string(data, "herdr_socket"),
         label=cast(LabelStyle, label),
-        resync_seconds=float(resync),
+        resync_seconds=resync,
         raise_window=_parse_raise(data.get("raise", {})),
+        animation=_parse_animation(data),
+        colors=_parse_colors(data.get("colors", {})),
     )
+
+
+def _parse_animation(data: Mapping[str, Any]) -> AnimationConfig:
+    enabled = data.get("animate", True)
+    if not isinstance(enabled, bool):
+        raise ConfigError(f"animate must be true or false, got {enabled!r}")
+    rates: dict[str, float] = {}
+    for key, default in (("blink_hz", 2.0), ("spinner_fps", 4.0), ("pulse_hz", 0.7)):
+        rates[key] = _positive(data, key, default)
+    attention = data.get("attention", ["blocked"])
+    if not isinstance(attention, list):
+        raise ConfigError(f"attention must be a list of statuses, got {attention!r}")
+    return AnimationConfig(
+        enabled=enabled,
+        blink_hz=rates["blink_hz"],
+        spinner_fps=rates["spinner_fps"],
+        pulse_hz=rates["pulse_hz"],
+        attention=frozenset(_status(name, "attention") for name in attention),
+    )
+
+
+def _parse_colors(raw: object) -> dict[AgentStatus, str]:
+    if not isinstance(raw, Mapping):
+        raise ConfigError("[colors] must be a table")
+    colors: dict[AgentStatus, str] = {}
+    for name, value in raw.items():
+        if not isinstance(value, str) or not _HEX_COLOR.match(value):
+            raise ConfigError(f"colors.{name} must be #rrggbb, got {value!r}")
+        colors[_status(name, "colors")] = value
+    return colors
+
+
+def _status(name: object, where: str) -> AgentStatus:
+    try:
+        return AgentStatus(str(name))
+    except ValueError:
+        valid = ", ".join(status.value for status in AgentStatus)
+        raise ConfigError(f"{where}: unknown status {name!r} (use {valid})") from None
+
+
+def _positive(data: Mapping[str, Any], key: str, default: float) -> float:
+    value = data.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, int | float) or value <= 0:
+        raise ConfigError(f"{key} must be a positive number, got {value!r}")
+    return float(value)
 
 
 def _parse_raise(raw: object) -> RaiseConfig:

@@ -73,3 +73,44 @@ def test_default_config_path() -> None:
     home = Path("/home/u")
     assert default_config_path({}, home) == home / ".config/herdr-dock/config.toml"
     assert default_config_path({"XDG_CONFIG_HOME": "/x"}, home) == Path("/x/herdr-dock/config.toml")
+
+
+def test_animation_and_colors() -> None:
+    from herdr_core.animation import AnimationConfig
+    from herdr_core.models import AgentStatus
+
+    config = parse_config(
+        {
+            "animate": False,
+            "blink_hz": 3,
+            "spinner_fps": 8,
+            "pulse_hz": 1,
+            "attention": ["blocked", "done"],
+            "colors": {"blocked": "#FF0000"},
+        }
+    )
+    assert config.animation == AnimationConfig(
+        enabled=False,
+        blink_hz=3.0,
+        spinner_fps=8.0,
+        pulse_hz=1.0,
+        attention=frozenset({AgentStatus.BLOCKED, AgentStatus.DONE}),
+    )
+    assert config.colors == {AgentStatus.BLOCKED: "#FF0000"}
+
+
+@pytest.mark.parametrize(
+    ("data", "message"),
+    [
+        ({"animate": "yes"}, "animate must be"),
+        ({"blink_hz": -1}, "blink_hz"),
+        ({"attention": "blocked"}, "attention must be a list"),
+        ({"attention": ["panicking"]}, "unknown status 'panicking'"),
+        ({"colors": "red"}, r"\[colors\] must be a table"),
+        ({"colors": {"blocked": "red"}}, "colors.blocked must be #rrggbb"),
+        ({"colors": {"sad": "#ff0000"}}, "colors: unknown status"),
+    ],
+)
+def test_animation_and_color_errors(data: dict[str, object], message: str) -> None:
+    with pytest.raises(ConfigError, match=message):
+        parse_config(data)
