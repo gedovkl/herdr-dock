@@ -25,7 +25,15 @@ from herdr_core.faces import (
     WeatherFace,
 )
 from herdr_core.models import AgentStatus
-from herdr_core.theme import STATUS_SYMBOL
+from herdr_core.theme import (
+    CLOCK_DATE_COLOR,
+    CLOCK_DAY_COLOR,
+    CLOCK_TIME_COLOR,
+    STATUS_SYMBOL,
+    WEATHER_COLOR,
+    WEATHER_SYMBOL,
+    temperature_color,
+)
 
 log = logging.getLogger(__name__)
 
@@ -228,35 +236,38 @@ class KeyRenderer:
     def _clock_face(self, face: ClockFace) -> Image.Image:
         """Time on top; the date below, one row per line of `face.date` (at most two)."""
         image, draw = self._canvas(self._bg)
-        fg = hex_to_rgb(self._palette.light_text)
-        date_color = blend(fg, hex_to_rgb(self._palette.muted), 0.4)
+        fg = hex_to_rgb(CLOCK_TIME_COLOR)
         width = self._size - self._px(6)
         rows = [line for line in face.date.split("\n") if line][:2]
+        # Two rows: day in an accent colour, date softer. One row: just the softer colour.
+        row_colors = [CLOCK_DAY_COLOR, CLOCK_DATE_COLOR] if len(rows) == 2 else [CLOCK_DATE_COLOR]
         # (time y, time max size, date row ys, date max size) in 64 px units
         layouts = {0: (32, 22, (), 0), 1: (26, 22, (53,), 12), 2: (18, 20, (39, 54), 14)}
         time_y, time_size, row_ys, row_size = layouts[len(rows)]
         time_font = self._font_to_fit(face.time, width, largest=time_size, smallest=9)
         draw.text((self._half, self._px(time_y)), face.time, font=time_font, fill=fg, anchor="mm")
-        for text, y in zip(rows, row_ys, strict=True):
+        for text, y, color in zip(rows, row_ys, row_colors[: len(rows)], strict=True):
             font = self._font_to_fit(text, width, largest=row_size, smallest=7)
-            draw.text((self._half, self._px(y)), text, font=font, fill=date_color, anchor="mm")
+            draw.text(
+                (self._half, self._px(y)), text, font=font, fill=hex_to_rgb(color), anchor="mm"
+            )
         return image
 
     def _weather_face(self, face: WeatherFace) -> Image.Image:
         image, draw = self._canvas(self._bg)
         fg = hex_to_rgb(self._palette.light_text)
         width = self._size - self._px(6)
-        if face.symbol:
-            draw.text(
-                (self._half, self._px(15)),
-                face.symbol,
-                font=self._symbol_small,
-                fill=fg,
-                anchor="mm",
-            )
+        symbol = WEATHER_SYMBOL.get(face.condition, "")
+        if symbol:
+            color = hex_to_rgb(WEATHER_COLOR.get(face.condition, self._palette.light_text))
+            position = (self._half, self._px(15))
+            draw.text(position, symbol, font=self._symbol_small, fill=color, anchor="mm")
+        temp_color = fg if face.celsius is None else hex_to_rgb(temperature_color(face.celsius))
         temp_font = self._font_to_fit(face.temperature, width, largest=20, smallest=9)
-        temp_y = self._px(38) if face.symbol else self._px(28)
-        draw.text((self._half, temp_y), face.temperature, font=temp_font, fill=fg, anchor="mm")
+        temp_y = self._px(38) if symbol else self._px(28)
+        draw.text(
+            (self._half, temp_y), face.temperature, font=temp_font, fill=temp_color, anchor="mm"
+        )
         if face.place:
             muted = blend(fg, hex_to_rgb(self._palette.muted), 0.4)
             self._line(draw, face.place, self._size - self._px(3), "mb", muted)

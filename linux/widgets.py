@@ -48,25 +48,25 @@ class WeatherReading:
     is_day: bool
 
 
-def weather_symbol(code: int, is_day: bool = True) -> str:
-    """WMO weather code → a glyph the bundled font has."""
+def weather_condition(code: int, is_day: bool = True) -> str:
+    """WMO weather code → a theme.WEATHER_SYMBOL condition name."""
     if code == 0:
-        return "☀" if is_day else "☾"
+        return "sun" if is_day else "moon"
     if code in (1, 2):
-        return "☀" if is_day and code == 1 else "☁"
+        return "sun" if is_day and code == 1 else "cloud"
     if code == 3:
-        return "☁"
+        return "cloud"
     if code in (45, 48):
-        return "≡"
+        return "fog"
     if 51 <= code <= 57:
-        return "☂"
+        return "drizzle"
     if 61 <= code <= 67 or 80 <= code <= 82:
-        return "☔"
+        return "rain"
     if 71 <= code <= 77 or code in (85, 86):
-        return "❄"
+        return "snow"
     if code >= 95:
-        return "⚡"
-    return "?"
+        return "thunder"
+    return "unknown"
 
 
 async def fetch_json(url: str, timeout: float = 10.0) -> Any:
@@ -117,11 +117,13 @@ class WeatherWidget:
 
     def face(self) -> Face:
         if self._reading is None:
-            return WeatherFace("--", "", self._place)
-        unit = "°F" if self._units == "fahrenheit" else "°C"
-        temperature = f"{round(self._reading.temperature)}{unit}"
-        symbol = weather_symbol(self._reading.code, self._reading.is_day)
-        return WeatherFace(temperature, symbol, self._place)
+            return WeatherFace("--", place=self._place)
+        value = self._reading.temperature
+        fahrenheit = self._units == "fahrenheit"
+        temperature = f"{round(value)}{'°F' if fahrenheit else '°C'}"
+        celsius = (value - 32) * 5 / 9 if fahrenheit else value
+        condition = weather_condition(self._reading.code, self._reading.is_day)
+        return WeatherFace(temperature, condition, self._place, round(celsius, 1))
 
     async def refresh(self) -> bool:
         """Fetch current conditions. False (and the old reading kept) on any failure."""

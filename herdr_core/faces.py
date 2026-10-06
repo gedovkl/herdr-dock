@@ -63,11 +63,15 @@ class ClockFace:
 
 @dataclass(frozen=True, slots=True)
 class WeatherFace:
-    """Current conditions: a weather symbol, the temperature, and the place."""
+    """Current conditions. The renderer picks the glyph and colours from `condition`/`celsius`."""
 
     temperature: str
-    symbol: str = ""
+    """Formatted for display, in the configured units (e.g. "52°F")."""
+    condition: str = ""
+    """One of theme.WEATHER_SYMBOL's keys (sun, moon, cloud, fog, drizzle, rain, snow, thunder)."""
     place: str = ""
+    celsius: float | None = None
+    """The temperature in °C, for colouring; None before the first reading."""
 
 
 Face = (

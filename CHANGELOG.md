@@ -13,6 +13,10 @@ What was built, in order, and what was learned along the way. Architecture and r
   `longitude`, `place`, `units` (celsius/fahrenheit) and `refresh_minutes` are set in the config.
   WMO codes map to glyphs the bundled font has (☀ ☾ ☁ ≡ ☂ ☔ ❄ ⚡; ⛅ and 🌫 are missing). Failures
   keep the last reading, log once, and retry after 60 s.
+- Colours (Catppuccin, in `herdr_core/theme.py`): clock time lavender, weekday peach, date soft
+  grey; weather glyph by condition (yellow sun, lavender moon, blue rain, white snow, peach
+  thunder); temperature from lavender (freezing) through teal and green to red (very hot). The weather
+  face carries the condition and °C, and the renderer picks the glyph and colours.
 - A one-second tick, through the input queue, redraws only home keys whose text changed. It
   costs about 0.1 % of one core.
 - The author's config, mirrored in `config.example.toml`, gained a clock and Nashua, NH weather (°C) on

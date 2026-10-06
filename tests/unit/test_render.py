@@ -199,12 +199,51 @@ def test_clock_and_weather_faces_fit_their_text(renderer: KeyRenderer) -> None:
         ClockFace("14:07", "a\nb\nc (only two rows are drawn)"),
         ClockFace("14:07:59"),
         ClockFace("a very long time format that cannot fit", "and a long date too, really"),
-        WeatherFace("52°F", "☀", "Nashua"),
+        WeatherFace("52°F", "sun", "Nashua", 11.0),
         WeatherFace("--"),
     ):
         image = pixels(renderer.render(face))
         assert image.size == (64, 64)
         assert image.getpixel((0, 0)) == BG
-        light = hex_to_rgb(Palette().light_text)
-        assert light in {c for _, c in image.getcolors(4096) or []}
+        assert len(image.getcolors(4096) or []) > 3  # text was drawn
     assert renderer.render(ClockFace("14:07")) != renderer.render(ClockFace("14:08"))
+
+
+def test_widget_colours(renderer: KeyRenderer) -> None:
+    from herdr_core.faces import ClockFace, WeatherFace
+    from herdr_core.theme import (
+        CLOCK_DAY_COLOR,
+        CLOCK_TIME_COLOR,
+        WEATHER_COLOR,
+        temperature_color,
+    )
+
+    def colours(face: object) -> set[tuple[int, int, int]]:
+        image = pixels(renderer.render(face))  # type: ignore[arg-type]
+        return {c for _, c in image.getcolors(4096) or []}
+
+    clock = colours(ClockFace("14:07", "Mon\n5 Oct"))
+    assert hex_to_rgb(CLOCK_TIME_COLOR) in clock and hex_to_rgb(CLOCK_DAY_COLOR) in clock
+    rain = colours(WeatherFace("18°C", "rain", "x", 18.0))
+    assert hex_to_rgb(WEATHER_COLOR["rain"]) in rain
+    assert hex_to_rgb(temperature_color(18.0)) in rain
+    unknown = colours(WeatherFace("18°C", "tornado", "x"))  # unknown condition: no symbol
+    assert hex_to_rgb(WEATHER_COLOR["rain"]) not in unknown
+
+
+@pytest.mark.parametrize(
+    ("celsius", "colour"),
+    [
+        (-20, "#b4befe"),
+        (0, "#89dceb"),
+        (10, "#94e2d5"),
+        (20, "#a6e3a1"),
+        (25, "#f9e2af"),
+        (30, "#fab387"),
+        (40, "#f38ba8"),
+    ],
+)
+def test_temperature_colours(celsius: float, colour: str) -> None:
+    from herdr_core.theme import temperature_color
+
+    assert temperature_color(celsius) == colour
