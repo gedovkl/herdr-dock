@@ -1,0 +1,73 @@
+# herdr-dock config: copy to ~/.config/herdr-dock/config.toml
+# Every setting is optional; the values shown are the defaults unless marked "example".
+
+# herdr socket; empty = auto-detect ($HERDR_SOCKET, `herdr status server`, ~/.config/herdr/herdr.sock)
+herdr_socket = ""
+
+# Text under the status symbol: "cwd" (folder name), "title" (terminal title) or "name" (agent name)
+label = "cwd"
+
+# Full agent refresh even without events (seconds)
+resync_seconds = 30
+
+# Animation: blocked blinks, working spins, statuses in `attention` blink/pulse
+animate = true
+blink_hz = 2
+spinner_fps = 4
+pulse_hz = 0.7
+attention = ["blocked"]        # add "done" to pulse unseen finished work
+
+# Status colours (#rrggbb)
+[colors]
+# blocked = "#e64553"
+# done = "#179299"
+# working = "#df8e1d"
+# idle = "#40a02b"
+# unknown = "#7c7f93"
+
+# After focusing an agent in herdr, bring its terminal window to the front.
+[raise]
+enabled = true
+# Linux: "herdr-window" (or empty) focuses the window the herdr client runs in, via Hyprland.
+# Any other value is a shell command; {pane_id} {workspace_id} {tab_id} {cwd} {kind} are filled
+# in (shell-quoted). Write literal braces as {{ and }}, e.g. for Hyprland's Lua dispatcher:
+#   linux = "hyprctl dispatch 'hl.dsp.focus({{ window = \"class:foot\" }})'"
+linux = "herdr-window"
+# macOS (milestone 5), example:
+# macos = "osascript -e 'tell application \"Ghostty\" to activate'"
+
+[linux]
+brightness = 70
+device_ids = ["5548:1000", "6603:1009", "6603:1012"]   # VID:PID, tried in order
+app_launcher = "uwsm-app -- {app}"                     # used by `app = ...` home keys
+poll_seconds = 2                                       # replug detection
+
+# The three buttons under the screen: "herdr" (enter/leave Herdr mode), "page" (next agent page)
+# or "none"
+[linux.buttons]
+left = "herdr"
+middle = "none"
+right = "page"
+
+# Home page. key = 1..15, left to right, top to bottom. Each key does exactly one thing:
+#   herdr = true       enter Herdr mode
+#   app = "<id>"       launch a desktop app through app_launcher
+#   run = "<command>"  run a shell command (detached)
+# Optional: symbol = "<glyph>" or icon = "<path to image>" (icon wins).
+[[home]]
+key = 1
+label = "herdr"
+symbol = "◐"
+herdr = true
+
+# [[home]]                       # example
+# key = 2
+# label = "Browser"
+# symbol = "🌐"
+# app = "chromium"
+
+# [[home]]                       # example
+# key = 3
+# label = "Lock"
+# symbol = "⏻"
+# run = "omarchy-lock-screen"

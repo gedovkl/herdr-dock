@@ -7,5 +7,5 @@ log "ruff check"
 ruff check .
 log "ruff format --check"
 ruff format --check .
-log "mypy --strict (herdr_core)"
+log "mypy --strict (herdr_core, linux)"
 mypy

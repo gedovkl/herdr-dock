@@ -43,7 +43,17 @@ class ExitFace:
     connected: bool = True
 
 
-Face = EmptyFace | OfflineFace | AgentFace | PagerFace | ExitFace
+@dataclass(frozen=True, slots=True)
+class LauncherFace:
+    """A home-page key: an icon image or a large symbol, with a label underneath."""
+
+    label: str
+    symbol: str = ""
+    icon: str = ""
+    """Path to an image file; takes precedence over the symbol."""
+
+
+Face = EmptyFace | OfflineFace | AgentFace | PagerFace | ExitFace | LauncherFace
 
 
 @dataclass(frozen=True, slots=True)

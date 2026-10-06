@@ -57,5 +57,9 @@ allowed-confusables = ["×"]
 
 [tool.mypy]
 python_version = "3.11"
-packages = ["herdr_core"]
+packages = ["herdr_core", "linux"]
 strict = true
+
+[[tool.mypy.overrides]]
+module = ["StreamDock.*"]
+ignore_missing_imports = true

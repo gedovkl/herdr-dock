@@ -31,8 +31,19 @@ for architecture, milestones and open items. Read it before changing anything.
   `pane_closed`, `pane_agent_detected`, `pane_focused`, `workspace_closed` (underscore).
 - `pane.agent_status_changed` subscriptions need a `pane_id`. Resubscribe when the agent set changes.
 - Closing a workspace emits only `workspace_closed` (no `pane_closed` for its panes).
+- `pane_focused` events replay recent focus history to new subscribers. Read focus from
+  `agent.list`, never from the events.
 - Experiment in a throwaway session (`herdr --session <name> server`), never against the
   user's live session. `pane.report_agent` can drive agent states there.
+
+## M18 gotchas (verified)
+
+- USB `5548:1000` isn't in the SDK's product table; `linux.device_ids` lists the IDs to try.
+- Without permissions the SDK's `open()`/`set_key_image()` still report success; check access.
+- Images use `set_key_image(index + 1)`; presses must be decoded from raw packets
+  (`data[9]` = index + 1), because the SDK's decoded key numbers are wrong on this unit.
+- Only one process can drive the device: stop the daemon before `tools/probe_m18.py` or
+  `scripts/test-integration.sh hardware`.
 
 ## Platform split
 

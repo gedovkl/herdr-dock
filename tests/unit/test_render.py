@@ -153,3 +153,38 @@ def test_color_helpers() -> None:
     assert blend((0, 0, 0), (255, 255, 255), 0.5) == (128, 128, 128)
     assert luminance((255, 255, 255)) == pytest.approx(1.0)
     assert luminance((0, 0, 0)) == 0
+
+
+def test_launcher_with_symbol(renderer: KeyRenderer) -> None:
+    from herdr_core.faces import LauncherFace
+
+    image = pixels(renderer.render(LauncherFace("herdr", "◐")))
+    assert image.getpixel((5, 5)) == BG
+    light = hex_to_rgb(Palette().light_text)
+    assert light in {c for _, c in image.getcolors(4096) or []}
+    assert renderer.render(LauncherFace("herdr", "◐")) != renderer.render(LauncherFace("herdr"))
+
+
+def test_launcher_with_icon(renderer: KeyRenderer, tmp_path: object) -> None:
+    from pathlib import Path
+
+    from herdr_core.faces import LauncherFace
+
+    icon = Path(str(tmp_path)) / "icon.png"
+    Image.new("RGBA", (200, 100), (0, 0, 255, 255)).save(icon)
+    image = pixels(renderer.render(LauncherFace("app", "◐", str(icon))))
+    assert image.getpixel((32, 20)) == (0, 0, 255)  # icon drawn, scaled into the top area
+
+
+def test_launcher_with_broken_icon_falls_back(
+    renderer: KeyRenderer, tmp_path: object, caplog: pytest.LogCaptureFixture
+) -> None:
+    from pathlib import Path
+
+    from herdr_core.faces import LauncherFace
+
+    broken = Path(str(tmp_path)) / "broken.png"
+    broken.write_text("not an image")
+    with_symbol = renderer.render(LauncherFace("app", "◐", str(broken)))
+    assert with_symbol == renderer.render(LauncherFace("app", "◐"))
+    assert "cannot load icon" in caplog.text

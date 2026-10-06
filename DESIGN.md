@@ -287,6 +287,11 @@ Slot numbering is logical (0..n), and each front end maps it to physical keys:
   topology event (pane/tab/workspace created, closed, moved, agent detected or released) triggers a full
   resync, so this case is covered too.
 - An agent going `blocked` → `idle` while unseen is reported as `done`.
+- **`pane_focused` events are not the current focus.** A new `events.subscribe` stream gets a
+  replay of recent focus changes (about 10/s, across tabs), while `agent.list` stays steady.
+  The session treats focus events only as a hint and re-reads focus from `agent.list`, at most
+  every 0.5 s (`focus_refresh_interval`). Without this, the focus border flickered across agents
+  each time Herdr mode was entered.
 - `pane.report_agent` drives agent states in a throwaway session. The live integration tests
   (`tests/integration/test_herdr_live.py`) use it against `herdr --session <tmp> server`.
 
@@ -390,53 +395,62 @@ Example presets will be documented for Ghostty, Alacritty, Kitty, iTerm2 and Ter
 
 ## Linux front end: `herdr-dock` daemon
 
-- Opens the M18 with the Device SDK and owns all 15 keys and the 3 extra inputs.
-- **Home page** from TOML. Each key is one of these:
-  - `run`: a shell command, spawned detached (`setsid`, output to the log)
-  - `app`: launches a desktop app (`gtk-launch <desktop-id>` or `uwsm app -- …` on Omarchy)
-  - `herdr`: the Herdr mode button. Its face shows a live mini summary only while in Herdr
-    mode. On the home page it is a static icon, so the home page doesn't connect to herdr.
-- **Herdr page** uses the layout above. Key 1 = Exit.
-- Device I/O runs on one worker thread. Key callbacks are passed to the asyncio loop with
-  `loop.call_soon_threadsafe`.
-- SDK quirk: `set_key_image(key, path)` takes a file path and writes a temporary JPEG into the
-  **current working directory**, so the daemon `chdir`s to `$XDG_RUNTIME_DIR/herdr-dock`.
-- Hot-plug: `DeviceManager.listen()` together with the device change callback. On reconnect,
-  redraw the current page.
-- Runs as a systemd `--user` service. The udev rule from `99-streamdock.rules` must cover the
-  M18 VID/PID so it runs without sudo.
+Run it with `scripts/run-linux.sh`. Configure it by copying `config.example.toml` to
+`~/.config/herdr-dock/config.toml`; every setting is documented there.
 
-```toml
-# ~/.config/herdr-dock/config.toml
-herdr_socket = ""            # empty = auto-detect
-label = "cwd"                # cwd | title | name
-brightness = 70
-animate = true
-blink_hz = 2
-spinner_fps = 4
-attention = ["blocked"]   # add "done" to pulse unseen finished work
-resync_seconds = 30
-
-[raise]
-enabled = true
-linux = "hyprctl dispatch focuswindow class:com.mitchellh.ghostty"
-
-[[home]]
-key = 1
-label = "Herdr"
-herdr = true                 # enters Herdr mode
-
-[[home]]
-key = 2
-label = "Firefox"
-icon = "~/.config/herdr-dock/icons/firefox.png"
-app = "firefox"
-
-[[home]]
-key = 3
-label = "Build"
-run = "cd ~/Projects/foo && make"
+```mermaid
+flowchart LR
+    m18[["M18"]] -->|raw HID packets| dev["M18Device<br/>(worker thread)"]
+    dev -->|KeyPressed / ButtonPressed| daemon["Daemon<br/>input queue · replug watcher"]
+    daemon --> ctl["DockController<br/>HOME ⇄ HERDR"]
+    ctl -->|HOME| launcher["ShellLauncher<br/>run / app"]
+    ctl -->|HERDR| session["HerdrSession"]
+    session -->|SessionView| presenter["DeckPresenter"]
+    presenter -->|show(key, png)| dev
+    ctl -->|home faces| dev
+    session -->|focus| herdr[("herdr")]
+    session -->|raise| raiser["HerdrWindowRaiser<br/>hyprctl"]
 ```
+
+| Module | Responsibility |
+|--------|----------------|
+| `linux/device.py` | `M18Device` (a `KeySurface`): finds the M18 by configured IDs, checks access, drives the vendor SDK on one worker thread, decodes raw presses |
+| `linux/controller.py` | `DockController`: modes. HOME draws launcher keys and launches. HERDR runs session + presenter, with Exit on key 0. Extra buttons map to actions |
+| `linux/launcher.py` | `ShellLauncher`: detached `run` commands and `app` launches (`uwsm-app -- {app}`) |
+| `linux/hyprland.py` | `HerdrWindowRaiser`: focuses the window hosting the herdr client (walks `/proc` parents to a `hyprctl clients` pid) |
+| `linux/config.py` | `[linux]`, `[linux.buttons]` and `[[home]]` settings |
+| `linux/daemon.py` | Composition root, input queue, replug watcher, signal handling, clean shutdown (keys cleared) |
+| `linux/70-herdr-dock.rules` | udev `uaccess` rule for the M18 IDs (`scripts/install-linux.sh --udev`) |
+| `tools/probe_m18.py` | Hardware probe: IDs, firmware, key codes, update speed |
+
+**Modes**
+- **HOME**: `[[home]]` keys (`herdr = true`, `app = …`, `run = …`, with an optional `symbol` or
+  `icon`). Nothing talks to herdr. The default home page is a single `◐ herdr` key on key 1.
+- **HERDR**: key 1 = Exit (`◀ herdr` + status dots), keys 2–15 = agents (key 15 = pager on
+  overflow). Entering starts presenter + session. Exit stops the presenter first, so the
+  session's final "offline" view never reaches the keys, then the session, then redraws home.
+- **Extra buttons** (default): left = enter/leave Herdr mode, middle = none, right = next page.
+
+**M18 facts (verified on the unit, firmware `V3.VSDM18_HBOE.02.017`)**
+- USB `5548:1000` "HOTSPOTEKUSB HID DEMO" (VSDinside-branded M18). It is **not** in the SDK's
+  `g_products`, so the daemon enumerates the configured IDs itself (`linux.device_ids`).
+- Physical key index 0 = top-left, left to right, top to bottom. **Images**:
+  `set_key_image(index + 1)`. **Presses**: raw code `index + 1` (bytes `ACK..OK`, `data[9]` code,
+  `data[10]` 1 = press, 0 = release). The SDK's *decoded* key numbers are wrong for presses
+  (raw 1 is reported as KEY_11), so the daemon decodes raw packets.
+- Extra buttons: raw `0x25` (left), `0x30` (middle), `0x31` (right).
+- Speed: all 15 keys plus refresh in about 10–13 ms, one key in about 1 ms. Animation is not a concern.
+- Without device permissions the SDK **still reports success** from `open()` and
+  `set_key_image()`. `M18Device` checks `os.access()` on the hidraw path first and logs a hint
+  to install the udev rule.
+- The SDK writes temporary JPEGs into the current directory, so the daemon `chdir`s to
+  `$XDG_RUNTIME_DIR/herdr-dock`.
+- Replug: the daemon polls presence every `poll_seconds` (2 s), reconnects, and redraws the current mode.
+
+**Raise**: `[raise] linux = "herdr-window"` (the default) focuses the terminal the herdr client
+runs in, whichever terminal that is, using Hyprland ≥ 0.55 Lua dispatch
+(`hl.dsp.focus({ window = "address:…" })`) with the old `focuswindow` syntax as a fallback. Any
+other value is a shell command template.
 
 ## macOS front end: `com.herdr.dock.sdPlugin`
 
@@ -519,16 +533,18 @@ flowchart LR
    contracts and live tests against a throwaway herdr session. 99 % branch coverage.
 2. ✅ **Rendering**: faces, animator, Pillow renderer with bundled fonts, `DeckPresenter`
    with one in-phase ticker, `[colors]`/animation config, and `scripts/render-preview.sh`.
-3. **Linux daemon**: home page from TOML (run/app/herdr keys), Herdr mode with Exit,
-   agent keys, focus + raise.
-4. **Linux polish**: paging, extra inputs, working animation, systemd unit, udev check.
+3. ✅ **Linux daemon**: home page from TOML (run/app/herdr keys), Herdr mode with Exit on key 1,
+   agent keys, focus + raise of the herdr window (Hyprland), extra buttons, replug handling,
+   uaccess udev rule, hardware probe. Verified on the M18.
+4. **Linux polish**: systemd `--user` unit + `scripts/install-linux.sh`, start on login. Paging, extra
+   buttons, animation and the udev rule were done in milestones 2–3.
 5. **macOS plugin**: manifest, slot/pager/exit actions, visibility lifecycle, PyInstaller
    build, install + folder setup guide.
 
 ## Open items
 
-- **M18 hardware**: confirm the VID/PID on the unit (for the udev rule) and whether logical keys
-  16–18 exist on this model.
+- ✅ **M18 hardware**: `5548:1000`, 3 extra buttons (`0x25/0x30/0x31`). Key mapping verified.
+  See "M18 facts" above.
 - **macOS Exit key**: check whether the StreamDock app lets a folder's back key be placed
   on key 1 or swapped for a plugin action. If it can't, Exit is the app's own folder back
   key and the plugin's Exit action becomes an optional status-summary key. A plugin action
@@ -537,8 +553,7 @@ flowchart LR
   doesn't, use the Property Inspector "slot #" setting.
 - **macOS plugin directory**: confirm the path the StreamDock app loads `.sdPlugin` folders
   from.
-- **Animation rate**: measure how fast `set_key_image` + `refresh` (Linux) and `setImage`
-  (macOS) are on the M18. The target is 4 frames/s on a few keys. If it's too slow, drop the
-  spinner first and keep the blink. Also check whether `setImage` accepts an animated GIF data
-  URL and the app plays it. If it does, attention keys could be sent once instead of ticked.
+- ✅ **Animation rate on Linux**: about 1 ms per key, so not a concern.
+- **Animation rate on macOS**: measure `setImage` through the StreamDock app, and check whether it
+  accepts an animated GIF data URL and plays it.
 - **Multiple herdr sessions**: out of scope for now. The client already takes a socket path.

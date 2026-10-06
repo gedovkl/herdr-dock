@@ -9,7 +9,10 @@ jump to that agent.
 Both use the same `herdr_core` package. See [DESIGN.md](DESIGN.md) for the architecture,
 engineering rules (SOLID, ≥ 80 % test coverage) and milestones.
 
-Status: project skeleton and tooling; feature code starts with milestone 1.
+Status: Linux daemon working on the M18 (milestones 1–3). macOS plugin pending.
+
+Quick start (Linux): `scripts/setup.sh`, `scripts/install-linux.sh --udev`, then
+`scripts/run-linux.sh`. Copy `config.example.toml` to `~/.config/herdr-dock/config.toml` to customise.
 
 ## Scripts
 
@@ -26,7 +29,7 @@ Run from anywhere; they resolve the repo root themselves. Works with macOS's bas
 | `scripts/run-console.sh` | Print live herdr agent states in the terminal (no device) |
 | `scripts/render-preview.sh [dir]` | Render all key states/frames to PNGs for review |
 | `scripts/run-linux.sh [args]` | Run the Linux daemon in the foreground |
-| `scripts/install-linux.sh [--udev]` | Install the systemd `--user` service, optionally the udev rule (sudo) |
+| `scripts/install-linux.sh [--udev]` | Install the systemd `--user` service; `--udev` installs only the M18 udev rule (sudo) |
 | `scripts/build-macos-plugin.sh` | Build `dist/com.herdr.dock.sdPlugin` with PyInstaller (macOS) |
 | `scripts/install-macos-plugin.sh` | Copy the plugin into the StreamDock app (`STREAMDOCK_PLUGINS_DIR` overrides the path) |
 

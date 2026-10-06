@@ -12,6 +12,7 @@ from herdr_core.events import FocusChanged, StatusChanged, TopologyChanged, Unkn
 from herdr_core.models import AgentStatus
 from herdr_core.session import HerdrSession, SessionView
 from tests.fakes.in_memory import InMemoryHerdr, RecordingRaiser
+from tests.fakes.surface import FakeClock
 
 
 @dataclass
@@ -161,6 +162,59 @@ async def test_focus_events(rig: Rig) -> None:
     rig.herdr.push(FocusChanged("w2:p1"))
     view = await rig.views.wait_for(lambda v: any(a and a.focused for a in v.page.agents))
     assert [bool(a and a.focused) for a in view.page.agents] == [False, True, False]
+
+
+async def test_replayed_focus_events_do_not_move_the_focus() -> None:
+    """herdr replays old pane_focused events to new subscribers; agent.list is the truth."""
+    herdr, views, clock = InMemoryHerdr(), Views(), FakeClock()
+    session = HerdrSession(herdr, herdr, RecordingRaiser(), capacity=3, on_view=views, clock=clock)
+    herdr.add("w1:p1", focused=True)
+    herdr.add("w2:p1")
+    await session.start()
+    try:
+        await views.wait_for(connected)
+        lists = herdr.list_calls
+        clock.now = 10.0
+        for pane in ("w2:p1", "w9:p9", "w2:p1", "w1:p1", "w2:p1"):
+            herdr.deliver(FocusChanged(pane))  # stale replay; real focus stays on w1:p1
+        await _until(lambda: herdr.list_calls > lists)
+        await _until(lambda: not herdr.open_streams()[0]._queue.qsize())
+        for _ in range(20):
+            await asyncio.sleep(0)
+        assert herdr.list_calls == lists + 1  # one refresh for the whole burst
+        focused = [a.pane_id for a in session.view.page.agents if a and a.focused]
+        assert focused == ["w1:p1"]
+        assert all(
+            [a.pane_id for a in v.page.agents if a and a.focused] in ([], ["w1:p1"])
+            for v in views.seen
+        )
+    finally:
+        await session.stop()
+
+
+async def test_focus_refresh_is_throttled_then_catches_up() -> None:
+    herdr, views, clock = InMemoryHerdr(), Views(), FakeClock()
+    session = HerdrSession(
+        herdr,
+        herdr,
+        RecordingRaiser(),
+        capacity=3,
+        on_view=views,
+        clock=clock,
+        focus_refresh_interval=0.05,
+    )
+    herdr.add("w1:p1", focused=True)
+    herdr.add("w2:p1")
+    await session.start()
+    try:
+        await views.wait_for(connected)
+        herdr.push(FocusChanged("w2:p1"))  # within the interval of the initial sync
+        view = await views.wait_for(
+            lambda v: [a.pane_id for a in v.page.agents if a and a.focused] == ["w2:p1"]
+        )
+        assert view.connected
+    finally:
+        await session.stop()
 
 
 async def test_unknown_events_are_ignored(rig: Rig) -> None:

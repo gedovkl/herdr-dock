@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import math
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -13,7 +15,7 @@ from herdr_core.errors import HerdrError
 from herdr_core.events import FocusChanged, HerdrEvent, StatusChanged, TopologyChanged
 from herdr_core.models import AgentStatus
 from herdr_core.paging import PageView, paginate
-from herdr_core.ports import EventStream, HerdrApi, HerdrEventSource, Raiser, Sleep
+from herdr_core.ports import Clock, EventStream, HerdrApi, HerdrEventSource, Raiser, Sleep
 from herdr_core.store import AgentStore
 
 log = logging.getLogger(__name__)
@@ -53,6 +55,8 @@ class HerdrSession:
         resync_interval: float = 30.0,
         backoff: Backoff | None = None,
         sleep: Sleep = asyncio.sleep,
+        clock: Clock = time.monotonic,
+        focus_refresh_interval: float = 0.5,
     ) -> None:
         paginate((), capacity, 0)  # validates capacity early
         self._api = api
@@ -63,6 +67,10 @@ class HerdrSession:
         self._resync_interval = resync_interval
         self._backoff = backoff or Backoff()
         self._sleep = sleep
+        self._clock = clock
+        self._focus_interval = focus_refresh_interval
+        self._focus_pending = False
+        self._last_sync = -math.inf
         self._store = AgentStore()
         self._page = 0
         self._connected = False
@@ -145,12 +153,23 @@ class HerdrSession:
         while True:
             assert self._stream is not None
             try:
-                event = await asyncio.wait_for(self._stream.next_event(), self._resync_interval)
+                event = await asyncio.wait_for(self._stream.next_event(), self._wait_timeout())
             except TimeoutError:
                 await self._sync()
             else:
                 await self._handle(event)
+                if self._focus_pending and self._focus_due() <= 0:
+                    await self._sync()
             self._emit()
+
+    def _focus_due(self) -> float:
+        """Seconds until a pending focus refresh may run."""
+        return self._last_sync + self._focus_interval - self._clock()
+
+    def _wait_timeout(self) -> float:
+        if self._focus_pending:
+            return max(0.0, min(self._focus_due(), self._resync_interval))
+        return self._resync_interval
 
     async def _handle(self, event: HerdrEvent) -> None:
         if isinstance(event, StatusChanged):
@@ -159,12 +178,16 @@ class HerdrSession:
             ):
                 await self._sync()
         elif isinstance(event, FocusChanged):
-            self._store.apply_focus(event.pane_id)
+            # herdr replays recent focus history to new subscribers, so pane_focused events
+            # aren't the current focus. Treat them as a hint and read focus from agent.list.
+            self._focus_pending = True
         elif isinstance(event, TopologyChanged):
             await self._sync()
 
     async def _sync(self) -> None:
         """Refresh all agents, and resubscribe if the set of agent panes changed."""
+        self._focus_pending = False
+        self._last_sync = self._clock()
         self._store.replace(await self._api.list_agents())
         for _ in range(_RESUBSCRIBE_ATTEMPTS):
             wanted = self._store.pane_ids()

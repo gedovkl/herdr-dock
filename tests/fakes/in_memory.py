@@ -64,8 +64,16 @@ class InMemoryHerdr:
         return agent
 
     def push(self, event: HerdrEvent) -> None:
+        """Deliver an event, updating herdr's state the way the event describes."""
         if isinstance(event, StatusChanged) and event.pane_id in self.agents:
             self.agents[event.pane_id] = self.agents[event.pane_id].with_status(event.status)
+        if isinstance(event, FocusChanged):
+            for key, agent in self.agents.items():
+                self.agents[key] = agent.with_focus(key == event.pane_id)
+        self.deliver(event)
+
+    def deliver(self, event: HerdrEvent) -> None:
+        """Deliver an event without changing state (e.g. herdr replaying old focus events)."""
         for stream in self.open_streams():
             stream.deliver(event)
 
@@ -89,8 +97,6 @@ class InMemoryHerdr:
         agent = self.agents.get(pane_id)
         if agent is None:
             raise HerdrRequestError("agent_not_found", f"agent target {pane_id} not found")
-        for key, other in self.agents.items():
-            self.agents[key] = other.with_focus(key == pane_id)
         if agent.status == AgentStatus.DONE:
             self.push(StatusChanged(pane_id, AgentStatus.IDLE))
         self.push(FocusChanged(pane_id))

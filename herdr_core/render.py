@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import logging
 from collections import OrderedDict
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -12,9 +13,19 @@ from types import MappingProxyType
 from PIL import Image, ImageDraw, ImageFont
 
 from herdr_core.animation import SPINNER_FRAMES, Effect
-from herdr_core.faces import AgentFace, EmptyFace, ExitFace, Face, OfflineFace, PagerFace
+from herdr_core.faces import (
+    AgentFace,
+    EmptyFace,
+    ExitFace,
+    Face,
+    LauncherFace,
+    OfflineFace,
+    PagerFace,
+)
 from herdr_core.models import AgentStatus
 from herdr_core.theme import STATUS_SYMBOL
+
+log = logging.getLogger(__name__)
 
 RGB = tuple[int, int, int]
 
@@ -136,6 +147,8 @@ class KeyRenderer:
             return self._exit(face, effect, frame)
         if isinstance(face, OfflineFace):
             return self._offline()
+        if isinstance(face, LauncherFace):
+            return self._launcher(face)
         assert isinstance(face, EmptyFace)
         return Image.new("RGB", (self._size, self._size), self._palette.empty)
 
@@ -191,6 +204,30 @@ class KeyRenderer:
         self._line(draw, "herdr", self._px(24), "mm", muted)
         self._line(draw, "offline", self._px(40), "mm", muted)
         return image
+
+    def _launcher(self, face: LauncherFace) -> Image.Image:
+        image, draw = self._canvas(self._bg)
+        fg = hex_to_rgb(self._palette.light_text)
+        icon = self._load_icon(face.icon) if face.icon else None
+        if icon is not None:
+            image.paste(icon, ((self._size - icon.width) // 2, self._px(5)), icon)
+        elif face.symbol:
+            draw.text(
+                (self._half, self._px(26)), face.symbol, font=self._symbol, fill=fg, anchor="mm"
+            )
+        self._line(draw, face.label, self._size - self._px(3), "mb", fg)
+        return image
+
+    def _load_icon(self, path: str) -> Image.Image | None:
+        box = self._size - self._px(22)
+        try:
+            with Image.open(path) as source:
+                icon = source.convert("RGBA")
+        except (OSError, ValueError) as exc:
+            log.warning("cannot load icon %s: %s", path, exc)
+            return None
+        icon.thumbnail((box, box), Image.Resampling.LANCZOS)
+        return icon
 
     # -- helpers ------------------------------------------------------------------------
 
