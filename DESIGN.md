@@ -49,7 +49,7 @@ These rules are binding for all code in this repo. A change that breaks one isn'
 
 ### Code conventions
 
-- Python ≥ 3.11, fully type-annotated, `mypy --strict` clean on `herdr_core` **and** `linux`
+- Python ≥ 3.11, fully type-annotated, `mypy --strict` clean on `herdr_core`, `linux` **and** `macos`
   (the vendor SDK is untyped and excluded). `ruff` for lint and format (line length 100;
   `×` is allowed as a confusable, because it's herdr's glyph).
 - Immutable value objects (`@dataclass(frozen=True, slots=True)`) for `Agent`, `SessionView`,
@@ -75,13 +75,14 @@ These rules are binding for all code in this repo. A change that breaks one isn'
 | Device           | StreamDock M18: 15 LCD keys (3×5), 64×64 JPEG; animation = host-side frame swaps |
 | Shared core      | `herdr_core` Python package: herdr socket client, agent store, paging, key renderer, focus + raise |
 | Linux front end  | Our own daemon on `StreamDock-Device-SDK/Python-SDK`, with a TOML-defined home page (apps, commands, Herdr key) |
-| macOS front end  | StreamDock app plugin (`.sdPlugin`) built with the official Python plugin SDK and packaged with PyInstaller |
+| macOS front end  | StreamDock app plugin (`.sdPlugin`): our own small client of the app's WebSocket plugin protocol (`websocket-client`), packaged with PyInstaller and launched through `CodePathMac` |
 | herdr transport  | Native socket API (NDJSON over Unix socket); no herdr plugin SDK required |
 | Scope            | All agents in all workspaces of the default herdr session |
 | Mode             | One Herdr button enters Herdr mode, one Exit button leaves it. herdr is connected **only while in Herdr mode** |
-| Key press        | `agent.focus` in herdr **and** raise the terminal window; the raise command is set in config for each OS |
+| Key press        | `agent.focus` (marks the agent seen), then `tab.focus` (herdr 0.9 UIs only follow that), then raise the terminal window; the raise command is set in config for each OS |
 | Overflow         | Pager key when agents exceed the free keys |
 | Raise (Linux)    | Default `herdr-window`: focus the Hyprland window whose process owns the herdr client (`/proc` parent walk); any terminal works |
+| Raise (macOS)    | Default `herdr-window`: `open` the application bundle above the attached herdr client (`ps` ancestry); works with tiling managers such as AeroSpace |
 | Home page (Linux) | TOML `[[home]]` keys: `herdr`, `app`, `run`, optional `focus` (focus a running window instead of launching), and live `widget`s (clock, weather, pomodoro, timer) |
 | Weather          | Open-Meteo (free, no API key); location, units and refresh interval in the config |
 | Lock / sleep     | Dock off while the session is locked (Hyprland session-lock flag) or the machine sleeps (logind `PrepareForSleep` plus a delay inhibitor) |
@@ -113,7 +114,7 @@ flowchart TB
 
     subgraph mac["macOS front end — com.herdr.dock.sdPlugin"]
         direction TB
-        mplugin["Plugin actions: Slot · Pager · Exit<br/>willAppear → start · willDisappear → stop"]
+        mplugin["One action: Herdr Agent (keys 2-15)<br/>willAppear → start · willDisappear → stop"]
         mapp["StreamDock app<br/>setImage(base64) per key context"]
         mplugin <-->|WebSocket| mapp
     end
@@ -175,8 +176,9 @@ the herdr connection. Then the daemon redraws the home page.
 
 The StreamDock app owns the pages, and the plugin SDK has **no command to switch pages or
 profiles** (open request:
-[StreamDock-Plugin-SDK#33](https://github.com/MiraboxSpace/StreamDock-Plugin-SDK/issues/33)).
-So on the Mac:
+[StreamDock-Plugin-SDK#33](https://github.com/MiraboxSpace/StreamDock-Plugin-SDK/issues/33)). The
+app's server does know a `switchToProfile` command, but it did nothing when a plugin sent it (see
+Open items). So on the Mac:
 
 - **Herdr button** = a normal **folder** you create in the StreamDock app.
 - **Exit button** = the app's own folder back key. Verified: the app puts a **fixed** back key on
@@ -273,16 +275,19 @@ index `capacity - 1` is the pager when one is shown.
 
 Slot numbering is logical (0..n), and each front end maps it to physical keys:
 - Linux: the daemon maps logical keys 2..15 to slot indexes.
-- macOS: the plugin derives the slot from the `coordinates` (row, column) in the
-  `willAppear` payload. A "slot #" setting in the Property Inspector is the fallback.
+- macOS: the plugin derives the key from the `coordinates` (column, row) in the `willAppear`
+  payload; the app's rows count from the bottom (see Open items), so the key index is
+  `(2 - row) * 5 + column`.
 
-### herdr API facts (verified against herdr 0.8.2, protocol 20)
+### herdr API facts (verified against herdr 0.8.2, protocol 20; 0.9.0 differences are marked)
 
 - Socket: `herdr status server` prints the path (`~/.config/herdr/herdr.sock` here). The core
   resolves the path in this order: config value, then the `HERDR_SOCKET` env var, then the
-  `herdr status server` output, then the default path. On macOS the StreamDock app starts
-  the plugin with a minimal `PATH`, so the plugin must also search `/opt/homebrew/bin`
-  and `/usr/local/bin` for `herdr` (milestone 5; not implemented yet).
+  `herdr status server` output, then the default path. `herdr_bin` in the config names the
+  binary. On macOS the StreamDock app starts the plugin with a minimal `PATH`, so
+  `macos/herdr_path.py` also searches `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin` and
+  `~/.cargo/bin`, and the plugin sets `$HOME` if it is missing (without it herdr reports a
+  temp-dir socket).
 - Framing: one JSON object per line. Request: `{"id","method","params"}`. Response:
   `{"id","result"}`, or an error.
 - Ordinary requests: the server closes the connection after replying. Open a new
@@ -519,22 +524,31 @@ other value is a shell command template.
 
 ## macOS front end: `com.herdr.dock.sdPlugin`
 
-- Built on the official Python plugin SDK (`SDPythonSDK`: WebSocket client, Action
-  classes, PyInstaller spec). It is packaged as a single executable named in the manifest's
-  `CodePathMac` (the app also reads `CodePathWin`), with `herdr_core` bundled in.
+- Speaks the app's plugin protocol itself (`macos/protocol.py`, `macos/websocket.py`) instead of
+  using the official `SDPythonSDK` classes: the protocol is a few JSON messages and the core
+  needs no Action-class model. It is packaged with PyInstaller as one executable named in the
+  manifest's `CodePathMac` (the app also reads `CodePathWin`), with `herdr_core` and the fonts
+  bundled in.
 - Manifest actions:
 
   | UUID | Name | Behaviour |
   |------|------|-----------|
   | `com.herdr.dock.agent` | Herdr Agent | One action for keys 2-15. The core decides what each key shows: an agent (press → focus + raise), the pager (`1/2 ▶`, press → next page) or an empty key |
 
-- Events used: `willAppear`, `willDisappear`, `keyUp`, `didReceiveSettings`. Commands used:
-  `setImage` (base64 PNG) and `setTitle` (empty, because the image already has the text).
-- Lifecycle: a reference count of visible plugin contexts. Going from 0 to 1 calls `start()`, and going from 1 to 0 calls `stop()`.
-- The `raise.macos` command still applies. The StreamDock app itself doesn't take focus
-  when a key is pressed.
-- Install: copy the `.sdPlugin` folder into the StreamDock plugins directory and restart the
-  app. Then create a folder named "Herdr" and drag the actions onto keys 1–15.
+- Events used: `deviceDidConnect`/`deviceDidDisconnect` (only the 5 × 3 dock is driven, the
+  first one that draws), `willAppear`, `willDisappear` and `keyUp`. Command used: `setImage`
+  (base64 PNG data URL; the image carries all the text, so no `setTitle`).
+- Lifecycle (`VisibilityLifecycle`): herdr starts when the first key appears and stops 0.3 s
+  after the last one is gone. The wait covers a page switch, where the app sends every
+  `willDisappear` before the new page's `willAppear`.
+- Raising: `[raise] macos = "herdr-window"` (the default) brings the terminal app that hosts
+  the attached herdr client to the front (`macos/raiser.py`). Any other value is a shell command.
+- The log is `~/Library/Logs/herdr-dock/plugin.log` (rotating), and the app copies the plugin's
+  stderr into its own log. After a rebuild, `pkill -f herdr-dock-plugin` makes the app relaunch
+  the plugin; new plugins and manifest changes need an app restart.
+- Install: `scripts/install-macos-plugin.sh` copies the `.sdPlugin` folder into the StreamDock
+  plugins directory; restart the app. Then add the app's folder action to a home-page key and drag
+  **Herdr Agent** onto keys 2-15 inside it (README has the steps).
 - Using the Device SDK daemon on macOS is still possible, but it can't run alongside the
   StreamDock app because only one can hold the device. That's why the plugin is the macOS route.
 
@@ -576,18 +590,22 @@ other value is a shell command template.
 | `linux/service.py`, `linux/herdr-dock.service` | systemd unit template and renderer |
 | `linux/70-herdr-dock.rules` | udev `uaccess` rule for the M18 |
 | `herdr_core/wiring.py` | Shared composition: `build_herdr_stack` (renderer + presenter + session), `start_herdr`/`stop_herdr`, `configure_logging`. Both front ends use it |
-| **macos/** | macOS front end (milestone 5, in progress) |
+| **macos/** | macOS front end (milestone 5, done) |
 | `macos/protocol.py` | The app's plugin protocol: parse events, build `register`/`setImage` messages (pure functions) |
 | `macos/websocket.py` | `WebSocketTransport`: socket thread → asyncio loop |
+| `macos/transport.py` | `PluginTransport` protocol (`send`), what the surface depends on |
 | `macos/surface.py` | `StreamDockSurface`: key index ↔ context, `setImage` |
 | `macos/lifecycle.py` | `VisibilityLifecycle`: start herdr on the first visible key, stop 0.3 s after the last |
 | `macos/plugin.py` | `HerdrPlugin`: routes app events (coordinates → key index, presses, device filter) |
 | `macos/herdr_path.py` | Finds `herdr` despite the app's minimal `PATH` |
 | `macos/plugin_main.py` | Composition root and entry point (`-port -pluginUUID -registerEvent -info`) |
-| *still to do* | `com.herdr.dock.sdPlugin/` (`manifest.json`, icons), `plugin.spec` (PyInstaller) |
+| `macos/raiser.py` | `TerminalRaiser` (`ps` + `open`), `macos_raiser()` picks it for `herdr-window` |
+| `macos/com.herdr.dock.sdPlugin/`, `macos/plugin.spec` | Plugin bundle source (`manifest.json`, icon) and the PyInstaller spec |
+| `herdr_core/processes.py` | `Process`, `herdr_clients`, `ancestor_pids`/`ancestors`, `run_exec`: finding the terminal that hosts the herdr client, shared by Linux and macOS |
 | **scripts/** | `setup`, `check`, `test`, `test-integration`, `lint`, `format`, `run-console`, `render-preview`, `run-linux`, `install-linux`, `build-macos-plugin`, `install-macos-plugin` (see README) |
 | `tools/probe_m18.py` | Hardware probe: IDs, firmware, raw key codes, update speed |
-| `tests/unit/` | Fast unit tests (core and `tests/unit/linux/`) |
+| `tools/make_plugin_icons.py` | Renders the macOS plugin icon with the same `KeyRenderer` as the keys |
+| `tests/unit/` | Fast unit tests (core, `tests/unit/linux/` and `tests/unit/macos/`) |
 | `tests/contracts/` | Port contract suite run against every implementation |
 | `tests/fakes/` | `FakeHerdrServer`, `InMemoryHerdr`, `RecordingRaiser`, `FakeSurface`, `FakeClock`, `FakeSdk` |
 | `tests/integration/` | Opt-in: `herdr_live` (throwaway headless herdr) and `hardware` (the M18) |
@@ -611,7 +629,7 @@ flowchart LR
 | Device absent at start (Linux) | Daemon runs normally and logs "waiting for the M18" once. It polls every `poll_seconds` and draws the current mode when the dock appears |
 | Device unplugged mid-run (Linux) | The hidraw node is checked every 0.25 s and before **every** write. On removal the device is closed *without* the SDK's disconnect write (writing to a removed device can kill the process natively), and later key updates are dropped. On replug: reconnect, then redraw the current mode. Verified on the M18 while animating: same PID, no restart, clean log |
 | Device or SDK errors | The watcher never dies: errors are logged once per distinct message. Presenter draw failures are logged once per failure streak and retried on the next push |
-| StreamDock app restarts (macOS) | Plugin process restarts. Contexts reappear through `willAppear` and the session restarts |
+| StreamDock app restarts (macOS) | The app relaunches the plugin and announces its keys again. If only the plugin restarts (`pkill`), the app does not replay `willAppear` for keys already showing: leave the folder and open it again |
 | Rapid status flapping | No debounce: only keys whose `(face, effect, frame)` changed are sent, and a key update costs about 1 ms on the M18 |
 | Weather fetch fails / offline | Keep the last reading (or `--`), log once, retry after 60 s |
 | `hyprctl` unavailable | Raise/focus fall back to "no window" (apps still launch). The lock monitor keeps its last state and backs off, and never guesses "unlocked" |
@@ -688,6 +706,10 @@ After milestone 4 (all on Linux, all verified on the M18 unless noted):
 - The `info` argument lists several device types and every event carries a `device` id. The
   plugin only drives the 5 × 3 device.
 - ✅ **Animation rate on Linux**: about 1 ms per key, so not a concern.
+- **herdr 0.8.2 (Linux) and `tab.focus`**: a press now also sends `tab.focus`. Check on the
+  Linux machine that it works there or at least only logs one warning.
+- **`done` status on herdr 0.9**: an unseen finished agent is reported as `idle` right away in a
+  headless session, so `attention = ["done"]` may never pulse. Check with a real attached client.
 - **Animation rate on macOS**: measure `setImage` through the StreamDock app, and check whether it
   accepts an animated GIF data URL and plays it.
 - **Multiple herdr sessions**: out of scope for now. The client already takes a socket path.

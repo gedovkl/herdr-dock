@@ -51,7 +51,7 @@ option), `DESIGN.md` (architecture, decisions, verified facts, milestones, open 
 - Every behaviour change ships with tests. Bug fixes start with a failing test.
 - Unit tests use the fakes in `tests/fakes/`, never real hardware, herdr, the StreamDock app or
   the window manager. Real-world tests are opt-in (`-m herdr_live`, `-m hardware`).
-- `scripts/check.sh` must pass before committing: ruff, `mypy --strict` on `herdr_core` and `linux`,
+- `scripts/check.sh` must pass before committing: ruff, `mypy --strict` on `herdr_core`, `linux` and `macos`,
   unit tests with branch coverage ≥ 80 %.
 - Python ≥ 3.11, frozen dataclasses for value objects, asyncio for I/O, `logging` instead of print
   (except CLI output).
@@ -64,10 +64,11 @@ option), `DESIGN.md` (architecture, decisions, verified facts, milestones, open 
 - `scripts/test-integration.sh herdr_live`: against a throwaway headless herdr session
 - `scripts/test-integration.sh hardware`: against the M18 (stop the service first)
 - `scripts/run-console.sh`: print live agent states (no device)
+- `scripts/build-macos-plugin.sh`, `scripts/install-macos-plugin.sh`: build and install the macOS plugin
 - `scripts/render-preview.sh`: all key faces → `build/preview/sheet.png` (look at it after rendering changes)
 - `scripts/install-linux.sh [--udev|--uninstall]`, `journalctl --user -u herdr-dock -f`
 
-## herdr protocol gotchas (verified on herdr 0.8.2)
+## herdr protocol gotchas (verified on herdr 0.8.2; 0.9.0 notes at the end)
 
 - One request per connection. The server closes the connection after replying.
 - Event names are mixed: `pane.agent_status_changed` (dot), but `pane_created`,
@@ -78,6 +79,9 @@ option), `DESIGN.md` (architecture, decisions, verified facts, milestones, open 
   `agent.list`, never from the events.
 - Experiment in a throwaway session (`herdr --session <name> server`), never against the
   user's live session. `pane.report_agent` can drive agent states there.
+
+- herdr 0.9.0: an attached UI ignores `agent.focus` and follows `tab.focus {"tab_id"}`, so a press
+  sends both. An unseen finished agent is reported `idle`, not `done`, in a headless session.
 
 ## M18 gotchas (verified)
 

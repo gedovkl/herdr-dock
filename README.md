@@ -129,6 +129,7 @@ Every setting is documented in [`config.example.toml`](config.example.toml). The
 | `[linux] focus_herdr_on_enter` | `true` (default): entering Herdr mode also brings the herdr window to the front (Hyprland) |
 | `[linux] blank_when_locked`, `blank_on_sleep` | `true` (default): turn the dock off while the session is locked / the machine sleeps. `lock_poll_seconds` (1) sets how quickly a lock is noticed |
 | `[raise] linux` | `"herdr-window"` (default): focus the window the herdr client runs in, via Hyprland. Any other value is a shell command (`{pane_id}`, `{cwd}`, … are filled in; write literal braces as `{{ }}`). Set `enabled = false` to never raise |
+| `herdr_socket`, `herdr_bin` | Where herdr's socket and binary are, when auto-detection fails (`herdr_bin` is also used on macOS) |
 | `label` | Text under the symbol: `"cwd"` (folder), `"title"` or `"name"` |
 | `attention` | Statuses that blink or pulse: `["blocked"]` by default; add `"done"` to make finished work pulse until you look at it |
 | `[colors]` | Per-status colours (`blocked = "#ff0000"`) |
@@ -256,7 +257,7 @@ systemctl --user restart herdr-dock
 |---------|-----|
 | Log says `no read/write access to /dev/hidrawN` | Run step 4, then replug the M18 |
 | Keys stay blank, nothing in the log about the M18 | Your unit has different USB IDs. Run `.venv/bin/python tools/probe_m18.py --vid 0x… --pid 0x…` with the IDs from `lsusb`/`/sys/bus/usb/devices/*/id*`, then add them to `[linux] device_ids` |
-| Agent keys say `herdr offline` | herdr isn't running, or it uses a different socket. Check `herdr status server`, and set `herdr_socket` in the config if needed |
+| Agent keys say `herdr offline` | herdr isn't running, or it uses a different socket. Check `herdr status server`, and set `herdr_socket` (or `herdr_bin`) in the config if needed |
 | Pressing an agent switches herdr but doesn't raise the window | You're not on Hyprland, or the herdr client isn't in a Hyprland window. Set `[raise] linux` to your own command |
 | `tools/probe_m18.py` or the hardware tests can't open the device | Only one process can drive the M18. Stop the daemon first: `systemctl --user stop herdr-dock` |
 | An `app = …` home key does nothing | `uwsm-app` couldn't resolve the name. Use the desktop ID with `.desktop` (see step 6), and check `journalctl --user -u herdr-dock` |
