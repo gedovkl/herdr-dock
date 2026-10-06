@@ -17,6 +17,8 @@ Re-checked Linux after the macOS plugin landed. `scripts/check.sh` had stopped p
 - Verified on Linux: `check.sh` (476 tests), `test-integration.sh herdr_live` against herdr 0.8.2
   (0.8.2 accepts `tab.focus`, and a press still keeps the chosen pane when a tab has two agents),
   and the service restarted on the new code (socket found, M18 connected).
+- Verified on the M18 with the author: agent presses still switch herdr and raise foot with
+  `tab.focus` now sent too; the journal shows no tab-focus warning.
 
 ## macOS plugin core (milestone 5, step 1)
 
