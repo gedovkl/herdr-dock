@@ -23,11 +23,12 @@ from herdr_core.raise_window import raiser_from_config
 from herdr_core.render import KeyRenderer, Palette
 from herdr_core.session import HerdrSession
 from herdr_core.socket_path import resolve_socket_path
-from linux.config import HERDR_WINDOW, KEY_COUNT, LinuxConfig, load_linux_config
+from linux.config import HERDR_WINDOW, KEY_COUNT, HomeKey, LinuxConfig, load_linux_config
 from linux.controller import DockController
 from linux.device import DeviceInput, M18Device, StreamDockSdk
 from linux.hyprland import HerdrWindowRaiser, WindowFocuser
 from linux.launcher import ShellLauncher
+from linux.widgets import ClockWidget, WeatherWidget, Widget
 
 log = logging.getLogger("herdr_dock")
 
@@ -39,9 +40,33 @@ class _Redraw:
 _REDRAW = _Redraw()
 
 
+class _Tick:
+    """Queue item: refresh live home keys (clock, weather)."""
+
+
+_TICK = _Tick()
+
+
 def default_workdir(env: dict[str, str] | os._Environ[str] = os.environ) -> Path:
     base = env.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
     return Path(base) / "herdr-dock"
+
+
+def build_widgets(home: tuple[HomeKey, ...]) -> dict[int, Widget]:
+    widgets: dict[int, Widget] = {}
+    for key in home:
+        if key.widget == "clock":
+            widgets[key.index] = ClockWidget(key.time_format, key.date_format)
+        elif key.widget == "weather":
+            assert key.latitude is not None and key.longitude is not None  # validated by config
+            widgets[key.index] = WeatherWidget(
+                key.latitude,
+                key.longitude,
+                units=key.units,
+                place=key.place,
+                refresh_seconds=key.refresh_minutes * 60,
+            )
+    return widgets
 
 
 def linux_raiser(config: RaiseConfig) -> Raiser:
@@ -61,15 +86,17 @@ class Daemon:
         *,
         poll_seconds: float,
         alive_seconds: float = 0.25,
+        widgets: dict[int, Widget] | None = None,
         sleep: Sleep = asyncio.sleep,
     ) -> None:
         self._device = device
         self._controller = controller
         self._poll = poll_seconds
         self._alive = alive_seconds
+        self._widgets = dict(widgets or {})
         self._sleep = sleep
         # Key presses and redraws share one queue so they never run concurrently.
-        self._inputs: asyncio.Queue[DeviceInput | _Redraw] = asyncio.Queue()
+        self._inputs: asyncio.Queue[DeviceInput | _Redraw | _Tick] = asyncio.Queue()
         self._last_error = ""
         self._announced_wait = False
 
@@ -78,12 +105,19 @@ class Daemon:
         self._inputs.put_nowait(event)
 
     async def run(self, stop: asyncio.Event) -> None:
-        handler = asyncio.create_task(self._handle_inputs(), name="inputs")
-        watcher = asyncio.create_task(self._watch_device(), name="device-watch")
+        tasks = [
+            asyncio.create_task(self._handle_inputs(), name="inputs"),
+            asyncio.create_task(self._watch_device(), name="device-watch"),
+        ]
+        if self._widgets:
+            tasks.append(asyncio.create_task(self._tick_widgets(), name="widget-tick"))
+        for widget in self._widgets.values():
+            if isinstance(widget, WeatherWidget):
+                tasks.append(asyncio.create_task(self._refresh_weather(widget), name="weather"))
         try:
             await stop.wait()
         finally:
-            for task in (handler, watcher):
+            for task in tasks:
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await task
@@ -99,10 +133,26 @@ class Daemon:
             try:
                 if isinstance(event, _Redraw):
                     await self._controller.redraw()
+                elif isinstance(event, _Tick):
+                    await self._controller.tick()
                 else:
                     await self._controller.handle(event)
             except Exception:
                 log.exception("handling %s failed", event)
+
+    async def _tick_widgets(self) -> None:
+        """Once a second; the controller only sends keys whose text actually changed."""
+        while True:
+            self._inputs.put_nowait(_TICK)
+            await self._sleep(1.0)
+
+    async def _refresh_weather(self, widget: WeatherWidget) -> None:
+        """Never raises: a failed fetch keeps the last reading and retries sooner."""
+        while True:
+            ok = await widget.refresh()
+            if ok:
+                self._inputs.put_nowait(_TICK)
+            await self._sleep(widget.refresh_seconds if ok else widget.RETRY_SECONDS)
 
     async def _watch_device(self) -> None:
         """Connect when the M18 appears; notice an unplug within `alive_seconds`.
@@ -142,6 +192,7 @@ def build(
     config: Config, linux: LinuxConfig, socket: Path, workdir: Path
 ) -> tuple[Daemon, DockController]:
     renderer = KeyRenderer(Palette().with_status_colors(config.colors), size=64)
+    widgets = build_widgets(linux.home)
     layout = KeyLayout(exit_key=True)
     holder: list[Callable[[DeviceInput], None]] = []
     device = M18Device(
@@ -174,8 +225,9 @@ def build(
         buttons=dict(linux.buttons),
         focuser=WindowFocuser(),
         on_enter=HerdrWindowRaiser().raise_herdr_window if linux.focus_herdr_on_enter else None,
+        widgets=widgets,
     )
-    daemon = Daemon(device, controller, poll_seconds=linux.poll_seconds)
+    daemon = Daemon(device, controller, poll_seconds=linux.poll_seconds, widgets=widgets)
     holder.append(daemon.on_input)
     return daemon, controller
 

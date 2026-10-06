@@ -417,6 +417,8 @@ flowchart LR
 | `linux/device.py` | `M18Device` (a `KeySurface`): finds the M18 by configured IDs, checks access, drives the vendor SDK on one worker thread, decodes raw presses |
 | `linux/controller.py` | `DockController`: modes. HOME draws launcher keys and launches. HERDR runs session + presenter, with Exit on key 0. Extra buttons map to actions |
 | `linux/launcher.py` | `ShellLauncher`: detached `run` commands and `app` launches (`uwsm-app -- {app}`) |
+| `linux/widgets.py` | Live home keys: `ClockWidget` (strftime) and `WeatherWidget` (Open-Meteo, WMO code → glyph, keeps the last reading on failure) |
+| `linux/service.py` | Renders the systemd unit (quoted `ExecStart`, `%` escaped) |
 | `linux/hyprland.py` | `HerdrWindowRaiser`: focuses the window hosting the herdr client (walks `/proc` parents to a `hyprctl clients` pid) |
 | `linux/config.py` | `[linux]`, `[linux.buttons]` and `[[home]]` settings |
 | `linux/daemon.py` | Composition root, input queue, replug watcher, signal handling, clean shutdown (keys cleared) |
@@ -429,6 +431,11 @@ flowchart LR
   `icon`). Nothing talks to herdr. The default home page is a single `◐ herdr` key on key 1.
   `focus = "<class regex>"` first focuses the most recently used Hyprland window whose class
   matches, and only launches `app`/`run` when there is none (`WindowFocuser`).
+  `widget = "clock" | "weather"` keys are live. The daemon queues a tick every second, and
+  `DockController.tick()` redraws home keys whose face changed. Weather refreshes every
+  `refresh_minutes` (retrying after 60 s on failure) and also queues a tick. Ticks, redraws and
+  presses share one queue, so they never interleave. The weather fetch is the daemon's only
+  network access.
 - **HERDR**: key 1 = Exit (`◀ herdr` + status dots), keys 2–15 = agents (key 15 = pager on
   overflow). Entering starts presenter + session. Exit stops the presenter first, so the
   session's final "offline" view never reaches the keys, then the session, then redraws home.

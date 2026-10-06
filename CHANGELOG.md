@@ -3,6 +3,21 @@
 What was built, in order, and what was learned along the way. Architecture and rationale live in
 [DESIGN.md](DESIGN.md); setup is in [README.md](README.md).
 
+## Clock and weather keys
+
+- `widget = "clock"`: time and date with configurable `time_format`/`date_format` (strftime).
+  The text shrinks to fit 64 px keys instead of being cut off.
+- `widget = "weather"`: current conditions from Open-Meteo (no API key). `latitude`,
+  `longitude`, `place`, `units` (celsius/fahrenheit) and `refresh_minutes` are set in the config.
+  WMO codes map to glyphs the bundled font has (☀ ☾ ☁ ≡ ☂ ☔ ❄ ⚡; ⛅ and 🌫 are missing). Failures
+  keep the last reading, log once, and retry after 60 s.
+- A one-second tick, through the input queue, redraws only home keys whose text changed. It
+  costs about 0.1 % of one core.
+- The author's config, mirrored in `config.example.toml`, gained a clock on key 5 and Nashua, NH
+  weather in °C on key 10.
+- Second code review: one finding, fixed. With a relative `--config` path, relative icon paths
+  stayed relative and broke after the SDK's `chdir`. They are now always absolute.
+
 ## Code review fixes
 
 A review of `herdr_core/`, `linux/` and `scripts/` found 7 issues. All were confirmed, and each fix

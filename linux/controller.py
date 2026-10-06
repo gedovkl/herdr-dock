@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import enum
 import logging
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Protocol
 
 from herdr_core.faces import EmptyFace, Face, KeyLayout, LauncherFace
@@ -12,6 +12,7 @@ from herdr_core.ports import KeySurface
 from herdr_core.render import KeyRenderer
 from linux.config import KEY_COUNT, HomeKey
 from linux.device import ButtonPressed, DeviceInput, KeyPressed
+from linux.widgets import Widget
 
 log = logging.getLogger(__name__)
 
@@ -59,6 +60,7 @@ class DockController:
         buttons: dict[str, str],
         focuser: Focuser,
         on_enter: Callable[[], Awaitable[None]] | None = None,
+        widgets: Mapping[int, Widget] | None = None,
     ) -> None:
         self._surface = surface
         self._renderer = renderer
@@ -70,6 +72,7 @@ class DockController:
         self._buttons = buttons
         self._focuser = focuser
         self._on_enter = on_enter
+        self._widgets = dict(widgets or {})
         self._mode = Mode.HOME
         self._home_shown: dict[int, Face] = {}
 
@@ -127,10 +130,18 @@ class DockController:
             await self._surface.show(index, self._renderer.render(face))
             self._home_shown[index] = face
 
+    async def tick(self) -> None:
+        """Refresh live home keys (clock, weather); only keys that changed are sent."""
+        if self._mode is Mode.HOME and self._widgets:
+            await self.draw_home()
+
     async def shutdown(self) -> None:
         await self.exit_herdr()
 
     def _home_face(self, index: int) -> Face:
+        widget = self._widgets.get(index)
+        if widget is not None:
+            return widget.face()
         key = self._home.get(index)
         if key is None:
             return EmptyFace()

@@ -113,7 +113,7 @@ def test_invalid_toml(tmp_path: Path) -> None:
         ({"home": [{"key": 0, "herdr": True}]}, "home.key must be 1-15"),
         ({"home": [{"key": 16, "herdr": True}]}, "home.key must be 1-15"),
         ({"home": [{"key": 1, "herdr": True}, {"key": 1, "run": "x"}]}, "used twice"),
-        ({"home": [{"key": 1}]}, "exactly one of run, app or herdr"),
+        ({"home": [{"key": 1}]}, "exactly one of run, app, herdr = true or widget"),
         ({"home": [{"key": 1, "run": "a", "app": "b"}]}, "exactly one"),
         ({"home": [{"key": 1, "run": 3}]}, "run must be a string"),
         ({"home": [{"key": 1, "herdr": "yes"}]}, "herdr must be true or false"),
@@ -134,3 +134,63 @@ def test_relative_icons_resolve_against_the_config_folder(tmp_path: Path) -> Non
     assert load_linux_config(path).home[0].icon == str(tmp_path / "icons/x.png")
     absolute = parse_linux_config({"home": [{"key": 1, "run": "x", "icon": "/abs/x.png"}]})
     assert absolute.home[0].icon == "/abs/x.png"
+
+
+def test_relative_icons_with_a_relative_config_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "config.toml").write_text(
+        '[[home]]\nkey = 1\nlabel = "x"\nrun = "x"\nicon = "icons/x.png"\n'
+    )
+    monkeypatch.chdir(tmp_path)
+    icon = load_linux_config(Path("config.toml")).home[0].icon  # e.g. --config config.toml
+    assert icon == str(tmp_path / "icons/x.png")  # absolute, so the SDK's chdir can't break it
+
+
+def test_widget_keys() -> None:
+    config = parse_linux_config(
+        {
+            "home": [
+                {"key": 5, "widget": "clock", "time_format": "%H:%M:%S", "date_format": ""},
+                {
+                    "key": 10,
+                    "widget": "weather",
+                    "latitude": 42.7654,
+                    "longitude": -71.4676,
+                    "units": "fahrenheit",
+                    "place": "Nashua",
+                    "refresh_minutes": 30,
+                    "run": "xdg-open https://weather.gov",
+                },
+            ]
+        }
+    )
+    clock, weather = config.home
+    assert (clock.widget, clock.time_format, clock.date_format) == ("clock", "%H:%M:%S", "")
+    assert (weather.widget, weather.latitude, weather.longitude) == ("weather", 42.7654, -71.4676)
+    assert (weather.units, weather.place) == ("fahrenheit", "Nashua")
+    assert weather.refresh_minutes == 30.0
+    assert weather.run == "xdg-open https://weather.gov"
+    minimal = {"key": 1, "widget": "weather", "latitude": 0, "longitude": 0}
+    default = parse_linux_config({"home": [minimal]})
+    assert (default.home[0].units, default.home[0].refresh_minutes) == ("celsius", 15.0)
+
+
+@pytest.mark.parametrize(
+    ("entry", "message"),
+    [
+        ({"widget": "radio"}, "widget must be one of clock, weather"),
+        ({"widget": "weather", "longitude": 1}, "latitude as a number"),
+        ({"widget": "weather", "latitude": 91, "longitude": 1}, "latitude as a number"),
+        ({"widget": "weather", "latitude": 1, "longitude": True}, "longitude as a number"),
+        ({"widget": "weather", "latitude": 1, "longitude": 1, "units": "kelvin"}, "units must be"),
+        (
+            {"widget": "weather", "latitude": 1, "longitude": 1, "refresh_minutes": 0.5},
+            "refresh_minutes",
+        ),
+        ({"widget": "clock", "herdr": True}, "can't be combined"),
+    ],
+)
+def test_widget_errors(entry: dict[str, object], message: str) -> None:
+    with pytest.raises(ConfigError, match=message):
+        parse_linux_config({"home": [{"key": 1, **entry}]})

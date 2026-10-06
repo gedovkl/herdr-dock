@@ -15,12 +15,14 @@ from PIL import Image, ImageDraw, ImageFont
 from herdr_core.animation import SPINNER_FRAMES, Effect
 from herdr_core.faces import (
     AgentFace,
+    ClockFace,
     EmptyFace,
     ExitFace,
     Face,
     LauncherFace,
     OfflineFace,
     PagerFace,
+    WeatherFace,
 )
 from herdr_core.models import AgentStatus
 from herdr_core.theme import STATUS_SYMBOL
@@ -117,6 +119,7 @@ class KeyRenderer:
         self._symbol_small = ImageFont.truetype(_font_path(self.SYMBOL_FONT), self._px(24))
         self._dot = ImageFont.truetype(_font_path(self.SYMBOL_FONT), self._px(11))
         self._text = ImageFont.truetype(_font_path(self.TEXT_FONT), self._px(11))
+        self._sized_fonts: dict[int, ImageFont.FreeTypeFont] = {}
         self._status_rgb = {s: hex_to_rgb(c) for s, c in self._palette.status.items()}
         self._bg = hex_to_rgb(self._palette.background)
 
@@ -149,6 +152,10 @@ class KeyRenderer:
             return self._offline()
         if isinstance(face, LauncherFace):
             return self._launcher(face)
+        if isinstance(face, ClockFace):
+            return self._clock_face(face)
+        if isinstance(face, WeatherFace):
+            return self._weather_face(face)
         assert isinstance(face, EmptyFace)
         return Image.new("RGB", (self._size, self._size), self._palette.empty)
 
@@ -217,6 +224,58 @@ class KeyRenderer:
             )
         self._line(draw, face.label, self._size - self._px(3), "mb", fg)
         return image
+
+    def _clock_face(self, face: ClockFace) -> Image.Image:
+        image, draw = self._canvas(self._bg)
+        fg = hex_to_rgb(self._palette.light_text)
+        width = self._size - self._px(6)
+        time_font = self._font_to_fit(face.time, width, largest=22, smallest=9)
+        time_y = self._px(26) if face.date else self._half
+        draw.text((self._half, time_y), face.time, font=time_font, fill=fg, anchor="mm")
+        if face.date:
+            date_font = self._font_to_fit(face.date, width, largest=12, smallest=7)
+            date_color = blend(fg, hex_to_rgb(self._palette.muted), 0.4)
+            date_y = self._size - self._px(11)
+            draw.text((self._half, date_y), face.date, font=date_font, fill=date_color, anchor="mm")
+        return image
+
+    def _weather_face(self, face: WeatherFace) -> Image.Image:
+        image, draw = self._canvas(self._bg)
+        fg = hex_to_rgb(self._palette.light_text)
+        width = self._size - self._px(6)
+        if face.symbol:
+            draw.text(
+                (self._half, self._px(15)),
+                face.symbol,
+                font=self._symbol_small,
+                fill=fg,
+                anchor="mm",
+            )
+        temp_font = self._font_to_fit(face.temperature, width, largest=20, smallest=9)
+        temp_y = self._px(38) if face.symbol else self._px(28)
+        draw.text((self._half, temp_y), face.temperature, font=temp_font, fill=fg, anchor="mm")
+        if face.place:
+            muted = blend(fg, hex_to_rgb(self._palette.muted), 0.4)
+            self._line(draw, face.place, self._size - self._px(3), "mb", muted)
+        return image
+
+    def _font_to_fit(
+        self, text: str, width: int, *, largest: int, smallest: int
+    ) -> ImageFont.FreeTypeFont:
+        """The largest text font (in 64 px units) that fits `width`; the smallest if none does."""
+        for size in range(largest, smallest - 1, -1):
+            font = self._sized_font(size)
+            if font.getlength(text) <= width:
+                return font
+        return self._sized_font(smallest)
+
+    def _sized_font(self, size: int) -> ImageFont.FreeTypeFont:
+        px = self._px(size)
+        font = self._sized_fonts.get(px)
+        if font is None:
+            font = ImageFont.truetype(_font_path(self.TEXT_FONT), px)
+            self._sized_fonts[px] = font
+        return font
 
     def _load_icon(self, path: str) -> Image.Image | None:
         box = self._size - self._px(22)

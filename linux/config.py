@@ -15,6 +15,8 @@ from herdr_core.config import ConfigError, default_config_path
 KEY_COUNT = 15
 BUTTON_NAMES = ("left", "middle", "right")
 BUTTON_ACTIONS = ("herdr", "page", "none")
+WIDGETS = ("clock", "weather")
+UNITS = ("celsius", "fahrenheit")
 DEFAULT_DEVICE_IDS: tuple[tuple[int, int], ...] = (
     (0x5548, 0x1000),
     (0x6603, 0x1009),
@@ -36,6 +38,16 @@ class HomeKey:
     symbol: str = ""
     focus: str = ""
     """Window class regex: focus a matching window if one exists, else run/app."""
+    widget: str = ""
+    """"clock" or "weather": a live key (pressing it still runs run/app/focus, if set)."""
+    time_format: str = "%H:%M"
+    date_format: str = "%a %d %b"
+    latitude: float | None = None
+    longitude: float | None = None
+    units: str = "celsius"
+    place: str = ""
+    refresh_minutes: float = 15.0
+    """How often the weather key fetches new conditions."""
 
     @property
     def index(self) -> int:
@@ -67,7 +79,7 @@ def load_linux_config(path: Path | None = None) -> LinuxConfig:
         return LinuxConfig()
     except tomllib.TOMLDecodeError as exc:
         raise ConfigError(f"{path}: {exc}") from exc
-    return parse_linux_config(data, base_dir=path.parent)
+    return parse_linux_config(data, base_dir=path.absolute().parent)
 
 
 def parse_linux_config(data: Mapping[str, Any], base_dir: Path | None = None) -> LinuxConfig:
@@ -162,14 +174,15 @@ def _home(raw: object, base_dir: Path) -> tuple[HomeKey, ...]:
             icon=_path(_text(entry, "icon", key), base_dir),
             symbol=_text(entry, "symbol", key),
             focus=_text(entry, "focus", key),
+            **_widget(entry, key),
         )
         launches = sum(1 for action in (home_key.run, home_key.app) if action)
-        if home_key.herdr and (launches or home_key.focus):
+        if home_key.herdr and (launches or home_key.focus or home_key.widget):
             raise ConfigError(f"home key {key}: herdr = true can't be combined with other actions")
-        if launches > 1 or not (launches or home_key.herdr or home_key.focus):
+        if launches > 1 or not (launches or home_key.herdr or home_key.focus or home_key.widget):
             raise ConfigError(
-                f"home key {key}: set exactly one of run, app or herdr = true "
-                "(optionally with focus)"
+                f"home key {key}: set exactly one of run, app, herdr = true or widget "
+                "(focus and widget can be combined with run/app)"
             )
         if home_key.focus:
             try:
@@ -180,11 +193,52 @@ def _home(raw: object, base_dir: Path) -> tuple[HomeKey, ...]:
     return tuple(keys)
 
 
+def _widget(entry: Mapping[str, Any], key: int) -> dict[str, Any]:
+    widget = _text(entry, "widget", key)
+    if not widget:
+        return {}
+    if widget not in WIDGETS:
+        raise ConfigError(f"home key {key}: widget must be one of {', '.join(WIDGETS)}")
+    if widget == "clock":
+        return {
+            "widget": widget,
+            "time_format": _text(entry, "time_format", key) or "%H:%M",
+            "date_format": str(entry.get("date_format", "%a %d %b")),
+        }
+    units = entry.get("units", "celsius")
+    if units not in UNITS:
+        raise ConfigError(f"home key {key}: units must be one of {', '.join(UNITS)}")
+    return {
+        "widget": widget,
+        "latitude": _coordinate(entry, "latitude", key, 90),
+        "longitude": _coordinate(entry, "longitude", key, 180),
+        "units": units,
+        "place": _text(entry, "place", key),
+        "refresh_minutes": _refresh_minutes(entry, key),
+    }
+
+
+def _refresh_minutes(entry: Mapping[str, Any], key: int) -> float:
+    value = entry.get("refresh_minutes", 15)
+    if isinstance(value, bool) or not isinstance(value, int | float) or value < 1:
+        raise ConfigError(f"home key {key}: refresh_minutes must be a number >= 1, got {value!r}")
+    return float(value)
+
+
+def _coordinate(entry: Mapping[str, Any], name: str, key: int, limit: int) -> float:
+    value = entry.get(name)
+    if isinstance(value, bool) or not isinstance(value, int | float) or abs(value) > limit:
+        raise ConfigError(
+            f"home key {key}: weather needs {name} as a number between -{limit} and {limit}"
+        )
+    return float(value)
+
+
 def _path(value: str, base_dir: Path) -> str:
     """Absolute path: the daemon changes its working directory for the SDK."""
     if not value:
         return ""
-    return str(base_dir / Path(value).expanduser())
+    return str((base_dir / Path(value).expanduser()).absolute())
 
 
 def _text(entry: Mapping[str, Any], name: str, key: int) -> str:

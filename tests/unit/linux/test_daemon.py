@@ -208,3 +208,57 @@ async def test_replug_redraw_never_interleaves_with_key_handling(
     await _until(lambda: log == ["redraw-start", "redraw-end", "press"])
     stop.set()
     await task
+
+
+def test_build_widgets() -> None:
+    from linux.config import HomeKey
+    from linux.daemon import build_widgets
+    from linux.widgets import ClockWidget, WeatherWidget
+
+    widgets = build_widgets(
+        (
+            HomeKey(1, "h", herdr=True),
+            HomeKey(5, "", widget="clock"),
+            HomeKey(10, "", widget="weather", latitude=1.0, longitude=2.0, refresh_minutes=2),
+        )
+    )
+    assert set(widgets) == {4, 9}
+    assert isinstance(widgets[4], ClockWidget)
+    assert isinstance(widgets[9], WeatherWidget) and widgets[9].refresh_seconds == 120
+
+
+async def test_widget_tasks_tick_and_refresh_weather(built: tuple[Daemon, FakeSdk]) -> None:
+    from linux.widgets import WeatherWidget
+
+    daemon, _ = built
+    sleeps: list[float] = []
+    ticks: list[int] = []
+
+    async def sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        await asyncio.sleep(0)
+
+    cloudy = {"current": {"temperature_2m": 10, "weather_code": 3}}
+    responses: list[object] = [OSError("offline"), cloudy]
+
+    async def fetch(url: str) -> object:
+        response = responses.pop(0) if responses else cloudy
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+    weather = WeatherWidget(1, 2, refresh_seconds=600, fetch=fetch)
+    daemon._widgets = {0: weather}
+    daemon._sleep = sleep
+
+    async def tick() -> None:
+        ticks.append(1)
+
+    daemon._controller.tick = tick  # type: ignore[method-assign]
+    stop = asyncio.Event()
+    task = asyncio.create_task(daemon.run(stop))
+    await _until(lambda: 600 in sleeps and 60 in sleeps and len(ticks) >= 2)
+    stop.set()
+    await task
+    assert sleeps.index(60) < sleeps.index(600)  # failed fetch retries sooner
+    assert weather.face().temperature == "10°C"  # type: ignore[union-attr]

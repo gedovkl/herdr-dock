@@ -121,7 +121,7 @@ Every setting is documented in [`config.example.toml`](config.example.toml). The
 
 | Setting | What it does |
 |---------|--------------|
-| `[[home]]` | Home-page keys: `key = 1..15` plus exactly one of `herdr = true`, `app = "<desktop id>"` or `run = "<shell command>"`. Optional `label`, `symbol`, `icon = "<path>"`, and `focus = "<window class regex>"` to focus an already-running window instead of starting another one |
+| `[[home]]` | Home-page keys: `key = 1..15` plus one of `herdr = true`, `app = "<desktop id>"`, `run = "<shell command>"` or `widget = "clock" \| "weather"`. Optional `label`, `symbol`, `icon = "<path>"`, and `focus = "<window class regex>"` to focus an already-running window instead of starting another one |
 | `[linux.buttons]` | `left`/`middle`/`right` → `"herdr"`, `"page"` or `"none"` |
 | `[linux] focus_herdr_on_enter` | `true` (default): entering Herdr mode also brings the herdr window to the front (Hyprland) |
 | `[raise] linux` | `"herdr-window"` (default): focus the window the herdr client runs in, via Hyprland. Any other value is a shell command (`{pane_id}`, `{cwd}`, … are filled in; write literal braces as `{{ }}`). Set `enabled = false` to never raise |
@@ -131,6 +131,33 @@ Every setting is documented in [`config.example.toml`](config.example.toml). The
 | `[linux] brightness`, `device_ids`, `app_launcher` | Screen brightness 0–100, USB IDs to look for, the command `app = …` keys use (`uwsm-app -- {app}`) |
 
 Restart the daemon after changing the config (`systemctl --user restart herdr-dock` once it runs as a service).
+
+#### Clock and weather keys
+
+```toml
+[[home]]
+key = 5
+widget = "clock"
+time_format = "%H:%M"      # strftime format; "%I:%M %p" for 12-hour, "%H:%M:%S" with seconds
+date_format = "%a %d %b"   # "" hides the date
+
+[[home]]
+key = 10
+widget = "weather"         # current conditions from Open-Meteo (free, no API key)
+place = "Nashua"           # label under the temperature
+latitude = 42.7654         # your location (find it at https://open-meteo.com or any map)
+longitude = -71.4676
+units = "celsius"          # or "fahrenheit"
+refresh_minutes = 15       # how often to fetch (≥ 1)
+```
+
+- The clock updates live while the home page shows. Only changed keys are sent, so a
+  minute-precision clock writes to the dock once a minute.
+- Weather shows a symbol (☀ ☾ ☁ ≡ ☂ ☔ ❄ ⚡), the rounded temperature and the place. With no network
+  it keeps the last reading, or shows `--` before the first one, and retries every minute. One
+  warning is logged per outage.
+- Widget keys can also act when pressed: add `run`, `app` or `focus` (for example
+  `run = "xdg-open https://weather.gov"`).
 
 #### Home keys for apps: focus if running, otherwise launch
 
@@ -207,6 +234,7 @@ systemctl --user restart herdr-dock
 | `tools/probe_m18.py` or the hardware tests can't open the device | Only one process can drive the M18. Stop the daemon first: `systemctl --user stop herdr-dock` |
 | An `app = …` home key does nothing | `uwsm-app` couldn't resolve the name. Use the desktop ID with `.desktop` (see step 6), and check `journalctl --user -u herdr-dock` |
 | Dock was unplugged | Nothing to do: plug it back in and it redraws within about 2 s |
+| Weather key shows `--` | No network, or the coordinates are wrong. The log says `weather update failed …` once. It retries every minute |
 | Service doesn't start at login | `systemctl --user status herdr-dock`. It needs `graphical-session.target`, which uwsm and most Wayland session managers provide |
 
 ## Setup on macOS

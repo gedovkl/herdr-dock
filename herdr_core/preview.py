@@ -10,7 +10,17 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 from herdr_core.animation import Animator, Effect
-from herdr_core.faces import AgentFace, EmptyFace, ExitFace, Face, OfflineFace, PagerFace
+from herdr_core.faces import (
+    AgentFace,
+    ClockFace,
+    EmptyFace,
+    ExitFace,
+    Face,
+    LauncherFace,
+    OfflineFace,
+    PagerFace,
+    WeatherFace,
+)
 from herdr_core.models import AgentStatus
 from herdr_core.render import KeyRenderer
 from herdr_core.theme import STATUS_PRIORITY
@@ -25,6 +35,12 @@ SAMPLES: tuple[tuple[str, Face], ...] = (
     ("exit", ExitFace((AgentStatus.WORKING, AgentStatus.IDLE))),
     ("exit-blocked", ExitFace((AgentStatus.BLOCKED, AgentStatus.DONE, AgentStatus.IDLE))),
     ("exit-offline", ExitFace((), connected=False)),
+    ("launcher", LauncherFace("herdr", "◐")),
+    ("clock", ClockFace("14:07", "Mon 05 Oct")),
+    ("clock-seconds", ClockFace("14:07:59", "05.10.2026")),
+    ("weather", WeatherFace("52°F", "☀", "Nashua")),
+    ("weather-snow", WeatherFace("-12°C", "❄", "Somewhere long")),
+    ("weather-offline", WeatherFace("--", "", "Nashua")),
     ("empty", EmptyFace()),
     ("offline", OfflineFace()),
 )

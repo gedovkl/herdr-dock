@@ -188,3 +188,21 @@ def test_launcher_with_broken_icon_falls_back(
     with_symbol = renderer.render(LauncherFace("app", "◐", str(broken)))
     assert with_symbol == renderer.render(LauncherFace("app", "◐"))
     assert "cannot load icon" in caplog.text
+
+
+def test_clock_and_weather_faces_fit_their_text(renderer: KeyRenderer) -> None:
+    from herdr_core.faces import ClockFace, WeatherFace
+
+    for face in (
+        ClockFace("14:07", "Mon 05 Oct"),
+        ClockFace("14:07:59"),
+        ClockFace("a very long time format that cannot fit", "and a long date too, really"),
+        WeatherFace("52°F", "☀", "Nashua"),
+        WeatherFace("--"),
+    ):
+        image = pixels(renderer.render(face))
+        assert image.size == (64, 64)
+        assert image.getpixel((0, 0)) == BG
+        light = hex_to_rgb(Palette().light_text)
+        assert light in {c for _, c in image.getcolors(4096) or []}
+    assert renderer.render(ClockFace("14:07")) != renderer.render(ClockFace("14:08"))

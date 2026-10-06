@@ -88,6 +88,21 @@ icon = "/usr/share/icons/hicolor/512x512/apps/zed.png"
 app = "dev.zed.Zed.desktop"
 focus = "^dev\\.zed\\.Zed$"
 
+[[home]]
+key = 5
+widget = "clock"
+time_format = "%H:%M"          # strftime; e.g. "%I:%M %p" for 12-hour
+date_format = "%a %d %b"       # "" to hide the date
+
+[[home]]
+key = 10
+widget = "weather"             # current conditions from Open-Meteo (no API key)
+place = "Nashua"
+latitude = 42.7654
+longitude = -71.4676
+units = "celsius"              # or "fahrenheit"
+refresh_minutes = 15
+
 # [[home]]                       # example: a shell command
 # key = 5
 # label = "Lock"

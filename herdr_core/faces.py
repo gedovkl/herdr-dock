@@ -53,7 +53,33 @@ class LauncherFace:
     """Path to an image file; takes precedence over the symbol."""
 
 
-Face = EmptyFace | OfflineFace | AgentFace | PagerFace | ExitFace | LauncherFace
+@dataclass(frozen=True, slots=True)
+class ClockFace:
+    """Large time with the date underneath (already formatted)."""
+
+    time: str
+    date: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class WeatherFace:
+    """Current conditions: a weather symbol, the temperature, and the place."""
+
+    temperature: str
+    symbol: str = ""
+    place: str = ""
+
+
+Face = (
+    EmptyFace
+    | OfflineFace
+    | AgentFace
+    | PagerFace
+    | ExitFace
+    | LauncherFace
+    | ClockFace
+    | WeatherFace
+)
 
 
 @dataclass(frozen=True, slots=True)

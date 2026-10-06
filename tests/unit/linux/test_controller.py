@@ -225,3 +225,29 @@ async def test_failing_focus_check_still_launches(rig: Rig) -> None:
     rig.focuser.focus_matching = broken  # type: ignore[method-assign]
     await rig.controller.handle(KeyPressed(3))
     assert rig.launcher.apps == ["chromium"]
+
+
+async def test_widget_keys_and_tick(rig: Rig) -> None:
+    from herdr_core.faces import ClockFace
+
+    class Clock:
+        text = "14:07"
+
+        def face(self) -> ClockFace:
+            return ClockFace(self.text)
+
+    clock = Clock()
+    rig.controller._widgets = {4: clock}
+    await rig.controller.draw_home()
+    assert rig.surface.shown[4] == png(ClockFace("14:07"))
+    rig.surface.calls.clear()
+    await rig.controller.tick()
+    assert rig.surface.calls == []  # unchanged: nothing sent
+    clock.text = "14:08"
+    await rig.controller.tick()
+    assert rig.surface.calls == [4]  # only the clock key
+    await rig.controller.enter_herdr()
+    rig.surface.calls.clear()
+    clock.text = "14:09"
+    await rig.controller.tick()  # Herdr mode: the home page isn't visible
+    assert 4 not in rig.surface.calls
