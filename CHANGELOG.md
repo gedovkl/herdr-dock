@@ -3,6 +3,21 @@
 What was built, in order, and what was learned along the way. Architecture and rationale live in
 [DESIGN.md](DESIGN.md); setup is in [README.md](README.md).
 
+## Linux check after the macOS work
+
+Re-checked Linux after the macOS plugin landed. `scripts/check.sh` had stopped passing on Linux:
+
+- `mypy` now checks `macos/`, and two macOS test modules import `websocket`, but
+  `websocket-client` was only in the `macos` extra. It is in `dev` now, so every OS type-checks and
+  unit-tests the plugin (with fakes; nothing connects).
+- Six `test_herdr_path.py` tests used the real `/usr/bin` as the "herdr-free" PATH and searched
+  the real `/opt/homebrew/bin` and `/usr/local/bin`, so they failed on any machine with herdr
+  installed there (this one has `/usr/bin/herdr`). The fixed directories are now
+  `herdr_path.SYSTEM_DIRS`, emptied by a fixture, and the tests use a PATH under `tmp_path`.
+- Verified on Linux: `check.sh` (476 tests), `test-integration.sh herdr_live` against herdr 0.8.2
+  (0.8.2 accepts `tab.focus`, and a press still keeps the chosen pane when a tab has two agents),
+  and the service restarted on the new code (socket found, M18 connected).
+
 ## macOS plugin core (milestone 5, step 1)
 
 - `macos/`: protocol parsing, WebSocket transport, `StreamDockSurface`, visibility lifecycle with a

@@ -17,6 +17,7 @@ dev = [
     "pytest-cov>=5",
     "ruff>=0.6",
     "mypy>=1.10",
+    "websocket-client>=1.8",  # macos/ is type-checked and unit-tested on every OS
 ]
 linux = ["pyudev>=0.24"]
 macos = ["websocket-client>=1.8", "pyinstaller>=6.12"]

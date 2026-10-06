@@ -11,14 +11,11 @@ from pathlib import Path
 
 from herdr_core.socket_path import StatusReader, status_reader
 
+SYSTEM_DIRS: tuple[Path, ...] = (Path("/opt/homebrew/bin"), Path("/usr/local/bin"))
+
 
 def _install_dirs(home: Path) -> tuple[Path, ...]:
-    return (
-        home / ".local" / "bin",
-        Path("/opt/homebrew/bin"),
-        Path("/usr/local/bin"),
-        home / ".cargo" / "bin",
-    )
+    return (home / ".local" / "bin", *SYSTEM_DIRS, home / ".cargo" / "bin")
 
 
 def find_herdr(path_env: str, home: Path, configured: str = "") -> Path | None:
