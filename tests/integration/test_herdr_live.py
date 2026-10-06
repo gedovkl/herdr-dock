@@ -68,8 +68,8 @@ def herdr_socket() -> Iterator[Path]:
 async def client(herdr_socket: Path) -> AsyncIterator[HerdrSocketClient]:
     client = HerdrSocketClient(herdr_socket)
     yield client
-    for agent in await client.list_agents():
-        await client.request("workspace.close", {"workspace_id": agent.workspace_id})
+    for workspace_id in {agent.workspace_id for agent in await client.list_agents()}:
+        await client.request("workspace.close", {"workspace_id": workspace_id})
 
 
 async def new_agent(client: HerdrSocketClient, status: str, cwd: str = "/tmp") -> str:
@@ -155,3 +155,22 @@ async def test_focus_tab_moves_focus_to_that_agent(client: HerdrSocketClient) ->
     await client.focus_tab(agents[second].tab_id)
     focused = {a.pane_id: a.focused for a in await client.list_agents()}
     assert focused[second] and not focused[first]
+
+
+async def test_tab_focus_keeps_the_pressed_pane_when_a_tab_has_two_agents(
+    client: HerdrSocketClient,
+) -> None:
+    """A press sends agent.focus then tab.focus: the tab switch must not undo the pane choice."""
+    first = await new_agent(client, "idle")
+    split = await client.request(
+        "pane.split", {"direction": "right", "target_pane_id": first, "focus": False}
+    )
+    second = split["pane"]["pane_id"]
+    await report(client, second, "idle")
+    agents = {a.pane_id: a for a in await client.list_agents()}
+    assert agents[first].tab_id == agents[second].tab_id
+    for target, other in ((second, first), (first, second)):
+        await client.focus_agent(target)
+        await client.focus_tab(agents[target].tab_id)
+        focused = {a.pane_id: a.focused for a in await client.list_agents()}
+        assert focused[target] and not focused[other], f"pressing {target}: {focused}"

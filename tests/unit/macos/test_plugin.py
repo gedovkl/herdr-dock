@@ -232,3 +232,23 @@ async def test_appearing_pressing_and_disappearing_are_logged(
     assert "key 2 disappeared" in caplog.text
     assert "starting" in caplog.text and "stopping" in caplog.text
     await rig.close()
+
+
+async def test_an_invalid_event_does_not_latch_the_dock(rig: Rig) -> None:
+    """A rejected first event (the back key position) must not lock out the real dock."""
+    rig.send("willAppear", "c0", column=0, row=2, device="first")  # the app's back key
+    rig.send("willAppear", "c1", column=9, row=9, device="first")  # off the grid
+    rig.send("willAppear", "c2", column=1, row=2, device="second")
+    assert rig.surface.key_of("c2") == 1
+    await rig.close()
+
+
+# 6: a context that moves onto a key we don't use must not stay attached
+async def test_moving_onto_the_back_key_releases_the_old_key(rig: Rig) -> None:
+    rig.send("willAppear", "c1", column=1, row=2)
+    await rig.settle()
+    rig.send("willAppear", "c1", column=0, row=2)  # moved without a willDisappear
+    await rig.settle()
+    assert rig.surface.count == 0
+    assert rig.calls == ["start", "stop"]
+    await rig.close()

@@ -38,6 +38,7 @@ class VisibilityLifecycle:
         self._generation = 0
         self._changed = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
+        self._closed = False
 
     def appeared(self, context: str) -> None:
         self._visible.add(context)
@@ -48,7 +49,8 @@ class VisibilityLifecycle:
         self._notify()
 
     async def close(self) -> None:
-        """Stop the worker, and herdr too if it is running."""
+        """Stop the worker, and herdr too if it is running. Later events are ignored."""
+        self._closed = True
         task, self._task = self._task, None
         if task is not None:
             task.cancel()
@@ -58,6 +60,8 @@ class VisibilityLifecycle:
             await self._call(self._stop, "stopping")
 
     def _notify(self) -> None:
+        if self._closed:
+            return
         self._generation += 1
         self._changed.set()
         if self._task is None or self._task.done():

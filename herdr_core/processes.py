@@ -49,11 +49,22 @@ def herdr_clients(processes: Iterable[Process]) -> list[Process]:
     return clients
 
 
-def ancestors(pid: int, processes: dict[int, Process]) -> Iterator[Process]:
-    """`pid` itself, then its parent, grandparent... until the table or the chain ends."""
+def ancestor_pids(pid: int, processes: dict[int, Process]) -> Iterator[int]:
+    """`pid`, then each parent up the chain. A parent missing from the table (exited, or not
+    readable) is still yielded, because a window can belong to it, but ends the walk."""
     seen: set[int] = set()
-    while pid > 1 and pid not in seen and pid in processes:
+    while pid > 1 and pid not in seen:
         seen.add(pid)
-        process = processes[pid]
-        yield process
+        yield pid
+        process = processes.get(pid)
+        if process is None:
+            return
         pid = process.ppid
+
+
+def ancestors(pid: int, processes: dict[int, Process]) -> Iterator[Process]:
+    """The processes in `ancestor_pids` that are in the table."""
+    for ancestor in ancestor_pids(pid, processes):
+        process = processes.get(ancestor)
+        if process is not None:
+            yield process

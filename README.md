@@ -320,7 +320,9 @@ New plugins and manifest changes need a full app restart.
 | A press moves herdr but the terminal doesn't come forward | The log says `no terminal app found`: herdr isn't running in a macOS app (ssh or tmux from elsewhere). Set `[raise] macos` to your own command |
 | A press brings the terminal forward but herdr stays on its tab | Older herdr that lacks `tab.focus`: the log says `could not focus the tab` |
 
-Limits: the whole terminal app comes forward (not one window of it), the Exit key with status dots
+Limits: the whole terminal app comes forward (not one window of it); with herdr attached from
+several terminals the one with the lowest process id is used; a herdr binary under a path with spaces
+isn't recognised as a client (set `[raise] macos` to your own command then); the Exit key with status dots
 isn't available because the app's own back key owns key 1, and the home-page "Herdr" button is the app's
 folder key, not a plugin key (a plugin can't switch pages: see DESIGN.md).
 

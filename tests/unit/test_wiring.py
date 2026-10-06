@@ -82,3 +82,21 @@ async def test_stop_halts_the_presenter_before_the_session() -> None:
     calls: list[str] = []
     await stop_herdr(Recorder("presenter", calls), Recorder("session", calls))
     assert calls == ["presenter.stop", "session.stop"]
+
+
+def test_the_log_file_is_rotated_not_unbounded(tmp_path: Path) -> None:
+    from logging.handlers import RotatingFileHandler
+
+    root = logging.getLogger()
+    before = list(root.handlers), root.level
+    try:
+        configure_logging(verbose=False, log_file=tmp_path / "x.log")
+        (handler,) = [h for h in root.handlers if isinstance(h, RotatingFileHandler)]
+        assert 0 < handler.maxBytes <= 5_000_000
+        assert handler.backupCount >= 1
+    finally:
+        for handler in list(root.handlers):
+            if handler not in before[0]:
+                root.removeHandler(handler)
+                handler.close()
+        root.setLevel(before[1])

@@ -186,3 +186,11 @@ def test_single_process_terminal_picks_its_most_recent_window() -> None:
     ]
     clients = [p for p in herdr_clients(PROCESSES.values()) if p.pid == 220]
     assert window_for(clients, PROCESSES, windows) == "0xfoot-recent"
+
+
+def test_window_for_finds_a_window_owned_by_a_process_missing_from_the_table() -> None:
+    """The refactor to a shared ancestry walk must keep matching unreadable parents."""
+    client = Process(230, 220, ("herdr",))
+    table = {230: client}  # 220, the terminal, wasn't readable
+    windows = [{"pid": 220, "address": "0xterm", "focusHistoryID": 0}]
+    assert window_for([client], table, windows) == "0xterm"

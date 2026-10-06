@@ -128,3 +128,15 @@ async def test_close_without_ever_starting_does_nothing() -> None:
     rig = Rig()
     await rig.lifecycle.close()
     assert rig.calls == []
+
+
+async def test_events_after_close_do_nothing() -> None:
+    rig = Rig()
+    rig.lifecycle.appeared("a")
+    await settle()
+    await rig.lifecycle.close()
+    rig.lifecycle.appeared("late")
+    rig.lifecycle.disappeared("late")
+    await settle()
+    assert rig.calls == ["start", "stop"]
+    assert rig.lifecycle._task is None

@@ -84,6 +84,10 @@ class HerdrPlugin:
     def _appeared(self, event: Appeared) -> None:
         key = self._key(event.action, event.device, event.column, event.row)
         if key is None:
+            # A key we don't use (the back key, off the grid): if this context was attached
+            # to another key before, it must not keep drawing or keep herdr running.
+            self._surface.detach(event.context)
+            self._lifecycle.disappeared(event.context)
             return
         log.info("key %s appeared (column %s, row %s)", key + 1, event.column, event.row)
         self._surface.attach(event.context, key)
@@ -107,7 +111,7 @@ class HerdrPlugin:
 
     def _key(self, action: str, device: str, column: int, row: int) -> int | None:
         """The key index for one of our actions on the dock we drive, else None."""
-        if action != ACTION_UUID or not self._accept(device):
+        if action != ACTION_UUID or not self._allowed(device):
             return None
         if not (0 <= column < COLUMNS and 0 <= row < ROWS):
             return None
@@ -119,18 +123,17 @@ class HerdrPlugin:
                 "back", "key 1 is the app's folder back key; the action is ignored there"
             )
             return None
+        self._device = device  # only a key we really draw on latches the dock
         return key
 
-    def _accept(self, device: str) -> bool:
+    def _allowed(self, device: str) -> bool:
         size = self._sizes.get(device)
         if size is not None and size != (COLUMNS, ROWS):
             self._warn_once(
                 device, f"device {device} is {size[0]}x{size[1]}; only the 5x3 M18 works"
             )
             return False
-        if self._device is None:
-            self._device = device
-        elif self._device != device:
+        if self._device is not None and self._device != device:
             self._warn_once(device, f"ignoring a second dock ({device}); one dock at a time")
             return False
         return True

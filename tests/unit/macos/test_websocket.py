@@ -108,3 +108,28 @@ async def test_close_closes_the_socket() -> None:
     await asyncio.wait_for(rig.closed.wait(), 2)
     transport.close()
     assert rig.apps[0].closed
+
+
+async def test_callbacks_after_the_loop_closed_are_ignored() -> None:
+    """At shutdown the socket thread can still report a close; it must not raise."""
+    closed_loop = asyncio.new_event_loop()
+    closed_loop.close()
+    rig = Rig(["late message"])
+    transport = WebSocketTransport(
+        18618,
+        "registerPlugin",
+        "UUID1",
+        closed_loop,
+        on_message=rig.messages.append,
+        on_close=rig.closed.set,
+        app_factory=rig.factory,
+    )
+    transport.start()
+    for _ in range(50):
+        await asyncio.sleep(0.01)
+        if rig.apps and rig.apps[0].callbacks:
+            break
+    app = rig.apps[0]
+    app.callbacks["on_message"](app, "x")  # must not raise
+    app.callbacks["on_close"](app, 1000, "bye")
+    assert rig.messages == []

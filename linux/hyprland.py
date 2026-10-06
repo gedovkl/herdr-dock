@@ -9,7 +9,7 @@ from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 
 from herdr_core.models import Agent
-from herdr_core.processes import Exec, Process, ancestors, herdr_clients, run_exec
+from herdr_core.processes import Exec, Process, ancestor_pids, herdr_clients, run_exec
 
 log = logging.getLogger(__name__)
 
@@ -47,9 +47,9 @@ def window_for(
             by_pid.setdefault(pid, []).append(window)
     candidates: list[dict[str, object]] = []
     for client in clients:
-        for process in ancestors(client.pid, processes):
-            if process.pid in by_pid:
-                candidates.extend(by_pid[process.pid])
+        for pid in ancestor_pids(client.pid, processes):
+            if pid in by_pid:
+                candidates.extend(by_pid[pid])
                 break
     if not candidates:
         return None

@@ -44,14 +44,19 @@ class WebSocketTransport:
         app = self._app_factory(
             self._url,
             on_open=lambda ws: ws.send(self._register),
-            on_message=lambda _ws, message: self._loop.call_soon_threadsafe(
-                self._on_message, message
-            ),
+            on_message=lambda _ws, message: self._post(self._on_message, message),
             on_error=lambda _ws, error: log.warning("websocket error: %s", error),
-            on_close=lambda _ws, _code, _reason: self._loop.call_soon_threadsafe(self._on_close),
+            on_close=lambda _ws, _code, _reason: self._post(self._on_close),
         )
         self._app = app
         threading.Thread(target=app.run_forever, name="streamdock-ws", daemon=True).start()
+
+    def _post(self, callback: Callable[..., None], *args: Any) -> None:
+        """Run `callback` on the loop; at shutdown the loop may already be closed."""
+        try:
+            self._loop.call_soon_threadsafe(callback, *args)
+        except RuntimeError:
+            log.debug("event loop closed; dropping a socket event")
 
     def send(self, message: str) -> None:
         if self._app is None:

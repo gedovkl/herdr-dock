@@ -15,6 +15,31 @@ What was built, in order, and what was learned along the way. Architecture and r
 - `read_herdr_status(herdr=...)` takes the binary to run, so a front end with a minimal `PATH`
   can pass an absolute path.
 
+## Code review fixes (macOS plugin and shared code)
+
+A review of the four macOS commits found 10 issues. 6 were real and got a failing test first, 1 was
+checked and found harmless, 3 were rejected or documented:
+
+1. **Real, Linux regression of my refactor:** moving the ancestry walk into
+   `herdr_core.processes.ancestors` dropped matches for a window owned by a parent process missing from
+   the `/proc` table (the old loop checked the window before the lookup). Added `ancestor_pids`, used by
+   `window_for`, and a Linux test.
+2. **Real:** the plugin latched the dock on a rejected first event (the back key position, off the
+   grid), then refused the real dock. It latches only on a key it draws on.
+3. **Real:** a context moved onto a key we don't use stayed attached to its old key and kept herdr
+   running. It is detached now.
+4. **Real:** a late `willAppear` after `close()` started a new worker nobody awaited. `close()` is final.
+5. **Real:** the socket thread raised `RuntimeError: Event loop is closed` when reporting a close
+   after shutdown. Callbacks tolerate a closed loop.
+6. **Real:** the plugin log file grew without bound. It rotates (1 MB x 3).
+7. **Checked, harmless:** `tab.focus` after `agent.focus` could have undone the pane choice in a
+   tab with two agents. A live test in a throwaway herdr 0.9.0 session shows it keeps the pressed pane,
+   both ways (kept as a regression guard).
+8. **Rejected:** a slow `herdr status server` delaying the plugin's start (the SDK's own sample waits
+   1 s; the call has a 3 s timeout; a different socket is covered by `herdr_socket`).
+9. **Documented limits:** several terminals with herdr clients (the lowest pid wins) and a herdr binary
+   under a path with spaces (`ps` can't separate the words).
+
 ## macOS plugin: manifest, build, install (milestone 5, step 2)
 
 - **herdr 0.9.0: pressing an agent didn't switch the herdr UI.** `agent.focus` completes `ok` and
