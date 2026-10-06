@@ -22,10 +22,15 @@ These rules are binding for all code in this repo. A change that breaks one isn'
   failing test that reproduces the bug.
 - No real hardware, herdr server, StreamDock app or OS window manager in unit tests.
   They talk to fakes:
-  - `FakeHerdrServer`: an asyncio Unix-socket server that speaks the NDJSON protocol,
-    replays scripted events, and records requests.
-  - `FakeDevice` / `FakeAppConnection`: record images and inject key presses.
-  - `FakeClock` / injected ticker: animation tests run without real sleeping.
+  - `tests/fakes/herdr_server.py` `FakeHerdrServer`: an asyncio Unix-socket server that speaks
+    the real NDJSON protocol, scripts events, injects errors and records requests.
+  - `tests/fakes/in_memory.py` `InMemoryHerdr` (HerdrApi + HerdrEventSource without I/O) and
+    `RecordingRaiser`.
+  - `tests/fakes/surface.py` `FakeSurface` (records key images, can fail keys) and `FakeClock`.
+  - `tests/fakes/sdk.py` `FakeSdk` / `FakeSdkDevice`: the vendor M18 SDK, including raw key
+    packets, open/init failures and `close(notify=…)`.
+  - Subprocess-based adapters (`hyprctl`, `dbus-monitor`, `systemd-inhibit`, `notify-send`) take
+    an injectable runner or spawner, and tests pass fakes. No real WM or D-Bus is touched.
 - Hardware/app adapters stay thin (they only translate calls). They're covered by a small set of
   **opt-in integration tests** (`pytest -m hardware`, `pytest -m herdr_live`) that are skipped by default.
 - `# pragma: no cover` only on code that can't run in CI (for example a platform-specific `if`
@@ -36,23 +41,31 @@ These rules are binding for all code in this repo. A change that breaks one isn'
 
 | Principle | How it applies here |
 |-----------|---------------------|
-| **S**ingle responsibility | One reason to change per class: `HerdrClient` = protocol/transport, `AgentStore` = state + slot assignment, `Pager` = paging, `KeyRenderer` = pixels, `Animator` = timing, `WindowRaiser` = OS command, `HerdrSession` = orchestration only. Front ends only map keys and push images. |
-| **O**pen/closed | New statuses, glyphs, colours or label styles come from data (theme/config tables), not `if` chains. New front ends (another device, Windows) are new adapters, with no edits to `herdr_core`. New home-page key types register a handler and don't change the dispatcher. |
-| **L**iskov substitution | Every implementation of a port must pass the same **contract test suite** (`tests/contracts/`). `FakeDevice`, the SDK device adapter and the app adapter are interchangeable from the session's point of view. |
+| **S**ingle responsibility | One reason to change per class: `HerdrSocketClient` = protocol/transport, `AgentStore` = state + slot assignment, `paginate()` = paging, `faces_for()` = what a key shows, `Animator` = timing, `KeyRenderer` = pixels, `DeckPresenter` = what to send when, `HerdrSession` = orchestration only. On Linux: `M18Device` = hardware, `DockController` = modes and presses, `Daemon` = tasks and queue, widgets = one live key each, `LockMonitor`/`SleepMonitor` = power state. |
+| **O**pen/closed | Statuses, glyphs and colours come from data (`theme.py`, `[colors]`), not `if` chains. New front ends (another device, Windows) are new adapters, with no edits to `herdr_core`. New live home keys are new widget classes (`face`/`press`/`advance`) plus one line in `build_widgets()`. The controller doesn't change. |
+| **L**iskov substitution | Every implementation of a port must pass the same **contract test suite** (`tests/contracts/test_herdr_ports_contract.py`). `InMemoryHerdr` and `HerdrSocketClient` + `FakeHerdrServer` run the same tests, so session tests on the in-memory fake are valid for the real client. |
 | **I**nterface segregation | Small `typing.Protocol` ports instead of one big interface: `HerdrApi` (list/focus), `HerdrEventSource` + `EventStream` (subscribe), `KeySurface` (`show(key, png)`), `Raiser`, `Clock`, `Sleep`. Key input reaches the core as plain `press(index)` calls from the front end. Consumers depend only on what they use. |
 | **D**ependency inversion | `herdr_core` depends on those Protocols, never on the StreamDock SDK, the plugin SDK, `subprocess`, sockets or `time` directly. Concrete adapters are wired up in one composition root per front end (`linux/daemon.py`, `macos/plugin_main.py`). |
 
 ### Code conventions
 
-- Python ≥ 3.11, fully type-annotated, `mypy --strict` clean on `herdr_core`. `ruff` for
-  lint and format.
-- Immutable value objects (`@dataclass(frozen=True)`) for `Agent`, `SlotView` and `Config`.
+- Python ≥ 3.11, fully type-annotated, `mypy --strict` clean on `herdr_core` **and** `linux`
+  (the vendor SDK is untyped and excluded). `ruff` for lint and format (line length 100;
+  `×` is allowed as a confusable, because it's herdr's glyph).
+- Immutable value objects (`@dataclass(frozen=True, slots=True)`) for `Agent`, `SessionView`,
+  `PageView`, every `Face`, `Config` and `HomeKey`.
   The store returns new snapshots instead of objects that change underneath you.
 - asyncio for all I/O in the core. Blocking SDK calls run in the adapter's worker thread, never on
   the event loop.
 - No global state or singletons. Configuration is passed in explicitly.
-- Errors at boundaries are typed (`HerdrUnavailable`, `DeviceGone`) and handled where
-  recovery is decided (the session or front end), not swallowed in adapters.
+- Errors at boundaries are typed (`HerdrUnavailable`, `HerdrRequestError`, `HerdrProtocolError`,
+  `DeviceError`, `DevicePermissionError`, `ConfigError`) and handled where recovery is decided
+  (the session, daemon or controller), not swallowed in adapters.
+- OS access in the core has injectable defaults only: `run_shell` (raise commands),
+  `read_herdr_status` (`herdr status server`), `time.monotonic` and `asyncio.sleep`. Tests always
+  inject.
+- Nothing the user can trigger may crash the daemon: every background loop (device watcher,
+  input handler, widget ticks, weather, lock/sleep monitors) catches, logs once, and keeps going.
 - Logging through `logging`, one logger per module, with no `print` outside CLI entry points.
 
 ## Decisions
@@ -68,6 +81,12 @@ These rules are binding for all code in this repo. A change that breaks one isn'
 | Mode             | One Herdr button enters Herdr mode, one Exit button leaves it. herdr is connected **only while in Herdr mode** |
 | Key press        | `agent.focus` in herdr **and** raise the terminal window; the raise command is set in config for each OS |
 | Overflow         | Pager key when agents exceed the free keys |
+| Raise (Linux)    | Default `herdr-window`: focus the Hyprland window whose process owns the herdr client (`/proc` parent walk); any terminal works |
+| Home page (Linux) | TOML `[[home]]` keys: `herdr`, `app`, `run`, optional `focus` (focus a running window instead of launching), and live `widget`s (clock, weather, pomodoro, timer) |
+| Weather          | Open-Meteo (free, no API key); location, units and refresh interval in the config |
+| Lock / sleep     | Dock off while the session is locked (Hyprland session-lock flag) or the machine sleeps (logind `PrepareForSleep` plus a delay inhibitor) |
+| Device access    | udev `uaccess` rule for the M18 IDs only (not the SDK's world-writable rule) |
+| Autostart        | systemd **user** service bound to `graphical-session.target` |
 
 ## Overview
 
@@ -513,31 +532,46 @@ other value is a shell command template.
 
 | Path | Purpose |
 |------|---------|
-| `DESIGN.md` | This document |
-| `pyproject.toml` | Package metadata and dependencies |
-| `herdr_core/client.py` | Socket RPC, subscription stream, reconnect/backoff |
-| `herdr_core/store.py` | AgentStore, slots, paging |
-| `herdr_core/faces.py` | `SessionView` → per-key `Face` values, `KeyLayout` |
-| `herdr_core/animation.py` | `Animator`, `AnimationConfig`, spinner frames |
-| `herdr_core/render.py` | Pillow key renderer, palette, LRU frame cache (PNG bytes) |
-| `herdr_core/presenter.py` | `DeckPresenter`: views → changed keys on a `KeySurface`, animation ticker |
-| `herdr_core/preview.py` | `python -m herdr_core.preview`: every face/frame + contact sheet |
-| `herdr_core/fonts/` | DejaVu Sans + DejaVu Sans Condensed Bold, DejaVu licence |
-| `herdr_core/session.py` | HerdrSession (start/stop/press/next_page → on_view(SessionView)) |
-| `herdr_core/paging.py`, `backoff.py`, `events.py`, `models.py`, `errors.py`, `theme.py`, `socket_path.py` | Page layout, reconnect delays, typed events, value objects, typed errors, herdr symbols, socket discovery |
-| `herdr_core/console.py` | `python -m herdr_core.console`: live agent states in the terminal |
-| `herdr_core/raise_window.py` | Per-OS raise command runner |
-| `herdr_core/config.py` | Config loading |
-| `linux/daemon.py` | Pages (home/herdr), Device SDK wrapper, launcher |
-| `linux/herdr-dock.service` | systemd `--user` unit |
-| `macos/com.herdr.dock.sdPlugin/` | `manifest.json`, `static/img/`, `propertyInspector/slot/index.html` |
-| `macos/plugin_main.py` | Python plugin SDK actions → HerdrSession |
-| `macos/plugin.spec` | PyInstaller build |
+| `README.md` | User guide: setup, configuration, service, troubleshooting |
+| `DESIGN.md` | This document: architecture, decisions, verified facts, milestones, open items |
+| `CHANGELOG.md` | What was built, in order, and what was learned |
+| `CLAUDE.md` | Working agreements and current state for AI-assisted sessions (loaded automatically) |
+| `config.example.toml` | Every setting, documented. **Mirrors the author's own config** |
+| `pyproject.toml` | Package metadata, dependencies and extras (`dev`, `linux`, `macos`), pytest/coverage/ruff/mypy config |
+| **herdr_core/** | Shared, platform-independent |
+| `herdr_core/models.py`, `errors.py`, `events.py` | `Agent`/`AgentStatus`, typed errors, typed events + parser |
 | `herdr_core/ports.py` | `typing.Protocol` ports: `HerdrApi`, `HerdrEventSource`, `EventStream`, `KeySurface`, `Raiser`, `Clock`, `Sleep` |
-| `tests/unit/` | Store/paging/render/animator/session tests |
-| `tests/contracts/` | Shared contract suites that every port implementation must pass |
-| `tests/fakes/` | `FakeHerdrServer`, `FakeDevice`, `FakeAppConnection`, `FakeClock` |
-| `tests/integration/` | Opt-in `hardware` / `herdr_live` tests (skipped by default) |
+| `herdr_core/client.py` | `HerdrSocketClient`: socket RPC + subscription stream |
+| `herdr_core/socket_path.py` | Socket discovery (config → `$HERDR_SOCKET` → `herdr status server` → default) |
+| `herdr_core/store.py`, `paging.py`, `backoff.py` | Stable key slots, page layout, reconnect delays |
+| `herdr_core/session.py` | `HerdrSession`: list → subscribe → follow, focus/raise on press, emits `SessionView` |
+| `herdr_core/faces.py` | Per-key `Face` values (agent, exit, pager, empty, offline, launcher, clock, weather, pomodoro, timer) and `KeyLayout` |
+| `herdr_core/animation.py` | `Animator` (blink/spin/pulse as a function of time), `AnimationConfig` |
+| `herdr_core/theme.py` | herdr status glyphs, priority order, and widget glyphs and colours (Catppuccin) |
+| `herdr_core/render.py` | `KeyRenderer`: Pillow, any key size, LRU PNG cache, drawn tomato/stopwatch icons |
+| `herdr_core/presenter.py` | `DeckPresenter`: sends changed keys to a `KeySurface`, animation ticker, retries failed keys |
+| `herdr_core/raise_window.py` | `CommandRaiser` (shell template) / `NullRaiser` |
+| `herdr_core/config.py` | Core settings (`herdr_socket`, `label`, `resync_seconds`, `[raise]`, animation, `[colors]`) |
+| `herdr_core/console.py`, `preview.py` | `scripts/run-console.sh`, `scripts/render-preview.sh` |
+| `herdr_core/fonts/` | DejaVu Sans + DejaVu Sans Condensed Bold, with licence |
+| **linux/** | Linux front end |
+| `linux/daemon.py` | Composition root: `build()`, `Daemon` (input queue, device watcher, widget/weather/power tasks), `main()` |
+| `linux/controller.py` | `DockController`: HOME/HERDR modes, presses, buttons, blanking |
+| `linux/device.py` | `M18Device` + `StreamDockSdk` adapter: worker thread, access check, raw press decoding, unplug safety |
+| `linux/config.py` | `[linux]`, `[linux.buttons]`, `[[home]]` (incl. widget options) |
+| `linux/widgets.py` | `ClockWidget`, `WeatherWidget`, `PomodoroWidget`, `TimerWidget`, `desktop_notify` |
+| `linux/hyprland.py` | `hyprctl` helpers, `HerdrWindowRaiser`, `WindowFocuser` |
+| `linux/power.py` | `LockMonitor`, `SleepMonitor` (+ delay inhibitor) |
+| `linux/launcher.py` | `ShellLauncher` (`run`, `app` via `uwsm-app`) |
+| `linux/service.py`, `linux/herdr-dock.service` | systemd unit template and renderer |
+| `linux/70-herdr-dock.rules` | udev `uaccess` rule for the M18 |
+| **macos/** | macOS front end: **not built yet** (milestone 5). Planned: `com.herdr.dock.sdPlugin/` (`manifest.json`, `static/img/`, `propertyInspector/`), `plugin_main.py`, `plugin.spec` |
+| **scripts/** | `setup`, `check`, `test`, `test-integration`, `lint`, `format`, `run-console`, `render-preview`, `run-linux`, `install-linux`, `build-macos-plugin`, `install-macos-plugin` (see README) |
+| `tools/probe_m18.py` | Hardware probe: IDs, firmware, raw key codes, update speed |
+| `tests/unit/` | Fast unit tests (core and `tests/unit/linux/`) |
+| `tests/contracts/` | Port contract suite run against every implementation |
+| `tests/fakes/` | `FakeHerdrServer`, `InMemoryHerdr`, `RecordingRaiser`, `FakeSurface`, `FakeClock`, `FakeSdk` |
+| `tests/integration/` | Opt-in: `herdr_live` (throwaway headless herdr) and `hardware` (the M18) |
 
 ```mermaid
 flowchart LR
@@ -559,7 +593,11 @@ flowchart LR
 | Device unplugged mid-run (Linux) | The hidraw node is checked every 0.25 s and before **every** write. On removal the device is closed *without* the SDK's disconnect write (writing to a removed device can kill the process natively), and later key updates are dropped. On replug: reconnect, then redraw the current mode. Verified on the M18 while animating: same PID, no restart, clean log |
 | Device or SDK errors | The watcher never dies: errors are logged once per distinct message. Presenter draw failures are logged once per failure streak and retried on the next push |
 | StreamDock app restarts (macOS) | Plugin process restarts. Contexts reappear through `willAppear` and the session restarts |
-| Rapid status flapping | Coalesce redraws per key (~50 ms debounce) |
+| Rapid status flapping | No debounce: only keys whose `(face, effect, frame)` changed are sent, and a key update costs about 1 ms on the M18 |
+| Weather fetch fails / offline | Keep the last reading (or `--`), log once, retry after 60 s |
+| `hyprctl` unavailable | Raise/focus fall back to "no window" (apps still launch). The lock monitor keeps its last state and backs off, and never guesses "unlocked" |
+| `dbus-monitor` / `systemd-inhibit` unavailable | Sleep blanking off, or without the delay lock, with one log line |
+| Locked while a key is pressed | Presses are ignored while the dock is off |
 | Leaving Herdr mode mid-request | `stop()` cancels in-flight tasks. Late events are ignored |
 
 ## Milestones
@@ -575,11 +613,24 @@ flowchart LR
 4. ✅ **Linux service**: systemd `--user` unit (`linux/herdr-dock.service`, bound to
    `graphical-session.target`, restarts on failure) installed by `scripts/install-linux.sh`.
    Home keys can also `focus = "<class regex>"` an existing Hyprland window before launching.
-5. **macOS plugin**: manifest, slot/pager/exit actions, visibility lifecycle, PyInstaller
-   build, install + folder setup guide.
+5. **macOS plugin** (not started): manifest, slot/pager/exit actions, visibility lifecycle,
+   PyInstaller build, install + folder setup guide. Start by resolving the macOS open items below
+   on the Mac.
+
+After milestone 4 (all on Linux, all verified on the M18 unless noted):
+
+- Unplug-safe device handling, focus-or-launch home keys, `focus_herdr_on_enter`.
+- Three code reviews, every finding fixed with a regression test (see CHANGELOG).
+- Clock and weather widgets, with colours.
+- Dock off on lock (verified) and sleep (unit-tested; **not yet verified through a real
+  suspend**).
+- Pomodoro and timer widgets.
 
 ## Open items
 
+- **Suspend/resume on hardware**: confirm the dock goes dark before suspend and comes back
+  after resume (`journalctl --user -u herdr-dock` should show "system going to sleep" /
+  "system resumed"). The delay inhibitor is held (`systemd-inhibit --list` shows `herdr-dock`).
 - ✅ **M18 hardware**: `5548:1000`, 3 extra buttons (`0x25/0x30/0x31`). Key mapping verified.
   See "M18 facts" above.
 - **macOS Exit key**: check whether the StreamDock app lets a folder's back key be placed
