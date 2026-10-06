@@ -34,6 +34,8 @@ class RaiseConfig:
 @dataclass(frozen=True, slots=True)
 class Config:
     herdr_socket: str = ""
+    herdr_bin: str = ""
+    """Path to the herdr binary; empty = find it automatically."""
     label: LabelStyle = "cwd"
     resync_seconds: float = 30.0
     raise_window: RaiseConfig = field(default_factory=RaiseConfig)
@@ -67,6 +69,7 @@ def load_config(path: Path | None = None) -> Config:
 def parse_config(data: Mapping[str, Any]) -> Config:
     known = {
         "herdr_socket",
+        "herdr_bin",
         "label",
         "resync_seconds",
         "raise",
@@ -87,6 +90,7 @@ def parse_config(data: Mapping[str, Any]) -> Config:
 
     return Config(
         herdr_socket=_string(data, "herdr_socket"),
+        herdr_bin=_string(data, "herdr_bin"),
         label=cast(LabelStyle, label),
         resync_seconds=resync,
         raise_window=_parse_raise(data.get("raise", {})),

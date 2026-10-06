@@ -10,6 +10,7 @@ def test_example_config_is_valid_and_matches_defaults() -> None:
     config = load_config(EXAMPLE)
     linux = load_linux_config(EXAMPLE)
     assert config.raise_window.linux == "herdr-window"
+    assert config.herdr_bin == ""  # empty: find herdr automatically
     assert [k.label or k.widget for k in linux.home] == [
         "herdr",
         "Browser",

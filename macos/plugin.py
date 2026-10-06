@@ -67,6 +67,9 @@ class HerdrPlugin:
         elif isinstance(event, Appeared):
             self._appeared(event)
         elif isinstance(event, Disappeared):
+            key = self._surface.key_of(event.context)
+            if key is not None:
+                log.info("key %s disappeared", key + 1)
             self._surface.detach(event.context)
             self._lifecycle.disappeared(event.context)
         elif isinstance(event, KeyReleased):
@@ -82,6 +85,7 @@ class HerdrPlugin:
         key = self._key(event.action, event.device, event.column, event.row)
         if key is None:
             return
+        log.info("key %s appeared (column %s, row %s)", key + 1, event.column, event.row)
         self._surface.attach(event.context, key)
         self._lifecycle.appeared(event.context)
         self._presenter.invalidate()  # this key has never been drawn
@@ -90,6 +94,7 @@ class HerdrPlugin:
         key = self._key(event.action, event.device, event.column, event.row)
         if key is None:
             return
+        log.info("key %s pressed", key + 1)
         task = asyncio.create_task(self._press(self._layout.session_index(key)), name="press")
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)

@@ -208,3 +208,19 @@ async def test_close_stops_herdr(rig: Rig) -> None:
     await rig.settle()
     await rig.close()
     assert rig.calls == ["start", "stop"]
+
+
+async def test_appearing_pressing_and_disappearing_are_logged(
+    rig: Rig, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.INFO):
+        rig.send("willAppear", "c1", column=1, row=0)
+        rig.send("keyUp", "c1", column=1, row=0)
+        await rig.settle()  # herdr starts while the key is visible
+        rig.send("willDisappear", "c1", column=1, row=0)
+        await rig.settle()
+    assert "key 2 appeared" in caplog.text
+    assert "key 2 pressed" in caplog.text
+    assert "key 2 disappeared" in caplog.text
+    assert "starting" in caplog.text and "stopping" in caplog.text
+    await rig.close()

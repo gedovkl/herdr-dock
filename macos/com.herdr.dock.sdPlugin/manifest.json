@@ -1,0 +1,39 @@
+{
+  "Actions": [
+    {
+      "UUID": "com.herdr.dock.agent",
+      "Icon": "static/img/icon.png",
+      "state": 0,
+      "States": [
+        {
+          "TitleAlignment": "bottom",
+          "FontSize": "11",
+          "Image": "static/img/icon.png"
+        }
+      ],
+      "Settings": {},
+      "UserTitleEnabled": false,
+      "SupportedInMultiActions": false,
+      "Controllers": ["Keypad"],
+      "Name": "Herdr Agent",
+      "Tooltip": "Shows a herdr agent. Put it on keys 2-15 of a folder; key 15 becomes the pager when there are more than 14 agents."
+    }
+  ],
+  "Version": "0.1.0",
+  "Name": "herdr",
+  "Icon": "static/img/icon.png",
+  "CategoryIcon": "static/img/icon.png",
+  "Category": "herdr",
+  "Description": "Shows herdr coding agents as live keys. Press a key to jump to that agent.",
+  "CodePath": "herdr-dock-plugin",
+  "CodePathMac": "herdr-dock-plugin",
+  "SDKVersion": 1,
+  "Author": "herdr-dock",
+  "URL": "https://github.com/gedovkl/herdr-dock",
+  "OS": [
+    {
+      "Platform": "mac",
+      "MinimumVersion": "10.11"
+    }
+  ]
+}

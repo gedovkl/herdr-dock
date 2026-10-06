@@ -139,3 +139,18 @@ def test_main_survives_a_broken_config(
     seen = _run_main(monkeypatch, tmp_path)
     assert seen["config"] == Config()
     assert "using the defaults" in caplog.text
+
+
+def test_main_sets_home_for_herdr_when_the_app_does_not(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """herdr finds ~/.config/herdr through $HOME and reports a temp-dir socket without it."""
+    _run_main(monkeypatch, tmp_path)  # applies the common patches and runs main()
+    monkeypatch.delenv("HOME")
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    from macos import plugin_main
+
+    plugin_main.main(ARGV)
+    import os
+
+    assert os.environ["HOME"] == str(tmp_path)

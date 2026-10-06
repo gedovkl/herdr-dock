@@ -97,15 +97,20 @@ def default_log_file() -> Path:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
+    home = Path.home()
+    # herdr finds ~/.config/herdr through $HOME and reports a temp-dir socket without it.
+    os.environ.setdefault("HOME", str(home))
     configure_logging(verbose=False, log_file=default_log_file())
     try:
         config = load_config()
     except ConfigError as exc:
         log.error("%s; using the defaults", exc)  # no terminal to print to: the log is the report
         config = Config()
-    home = Path.home()
     socket = resolve_socket_path(
-        config.herdr_socket, os.environ, home, herdr_status_reader(os.environ.get("PATH", ""), home)
+        config.herdr_socket,
+        os.environ,
+        home,
+        herdr_status_reader(os.environ.get("PATH", ""), home, config.herdr_bin),
     ).absolute()
     log.info("herdr socket: %s", socket)
     asyncio.run(run_plugin(args, config, socket))

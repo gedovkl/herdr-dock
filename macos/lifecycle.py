@@ -69,6 +69,7 @@ class VisibilityLifecycle:
             self._changed.clear()
             if self._visible and not self._running:
                 self._running = True
+                log.info("a herdr key is visible: starting")
                 await self._call(self._start, "starting")
             elif not self._visible and self._running:
                 generation = self._generation
@@ -76,6 +77,7 @@ class VisibilityLifecycle:
                 if self._visible or generation != self._generation:
                     continue  # came back, or changed again: re-evaluate with a fresh wait
                 self._running = False
+                log.info("no herdr key is visible: stopping")
                 await self._call(self._stop, "stopping")
 
     async def _call(self, action: Callable[[], Awaitable[None]], what: str) -> None:

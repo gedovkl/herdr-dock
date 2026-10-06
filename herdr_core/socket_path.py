@@ -23,6 +23,12 @@ def read_herdr_status(herdr: str = "herdr") -> str | None:
     return done.stdout
 
 
+def status_reader(herdr: str = "") -> StatusReader:
+    """A reader that runs the configured binary (`~` allowed), or `herdr` from PATH if empty."""
+    binary = str(Path(herdr).expanduser()) if herdr else "herdr"
+    return lambda: read_herdr_status(binary)
+
+
 def resolve_socket_path(
     explicit: str,
     env: Mapping[str, str],

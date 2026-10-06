@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from herdr_core.socket_path import read_herdr_status, resolve_socket_path
+from herdr_core.socket_path import read_herdr_status, resolve_socket_path, status_reader
 
 HOME = Path("/home/u")
 STATUS = "status: running\nversion: 0.8.2\nsocket: /run/herdr/x.sock\n"
@@ -52,3 +52,26 @@ def test_read_herdr_status_runs_the_given_binary(
     fake.chmod(0o755)
     monkeypatch.setenv("PATH", "/nonexistent")
     assert read_herdr_status(str(fake)) == "socket: /tmp/status.sock\n"
+
+
+def test_status_reader_runs_the_configured_binary(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    fake = tmp_path / "my-herdr"
+    fake.write_text("#!/bin/sh\necho 'socket: /tmp/cfg.sock'\n")
+    fake.chmod(0o755)
+    monkeypatch.setenv("PATH", "/nonexistent")
+    assert status_reader(str(fake))() == "socket: /tmp/cfg.sock\n"
+
+
+def test_status_reader_expands_home_and_defaults_to_path_lookup(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "bin").mkdir()
+    fake = tmp_path / "bin" / "herdr"
+    fake.write_text("#!/bin/sh\necho 'socket: /tmp/home.sock'\n")
+    fake.chmod(0o755)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert status_reader("~/bin/herdr")() == "socket: /tmp/home.sock\n"
+    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+    assert status_reader("")() == "socket: /tmp/home.sock\n"

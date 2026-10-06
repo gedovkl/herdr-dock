@@ -19,11 +19,13 @@ def test_defaults() -> None:
 def test_full_config(tmp_path: Path) -> None:
     path = tmp_path / "config.toml"
     path.write_text(
-        'herdr_socket = "/run/h.sock"\nlabel = "title"\nresync_seconds = 5\nbrightness = 70\n'
+        'herdr_socket = "/run/h.sock"\nherdr_bin = "/opt/herdr"\nlabel = "title"\n'
+        "resync_seconds = 5\nbrightness = 70\n"
         '[raise]\nenabled = false\nlinux = "hyprctl dispatch focuswindow x"\nmacos = "osascript"\n'
     )
     assert load_config(path) == Config(
         herdr_socket="/run/h.sock",
+        herdr_bin="/opt/herdr",
         label="title",
         resync_seconds=5.0,
         raise_window=RaiseConfig(
@@ -59,6 +61,7 @@ def test_invalid_toml(tmp_path: Path) -> None:
         ({"resync_seconds": True}, "resync_seconds"),
         ({"resync_seconds": "5"}, "resync_seconds"),
         ({"herdr_socket": 5}, "herdr_socket must be a string"),
+        ({"herdr_bin": 5}, "herdr_bin must be a string"),
         ({"raise": "yes"}, r"\[raise\] must be a table"),
         ({"raise": {"enabled": "yes"}}, "raise.enabled"),
         ({"raise": {"linux": ["a"]}}, "raise.linux must be a string"),

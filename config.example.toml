@@ -4,6 +4,10 @@
 # herdr socket; empty = auto-detect ($HERDR_SOCKET, `herdr status server`, ~/.config/herdr/herdr.sock)
 herdr_socket = ""
 
+# herdr binary; empty = find it automatically (PATH, then ~/.local/bin, /opt/homebrew/bin, ...)
+# Set it if herdr lives somewhere unusual, e.g. "~/tools/herdr". Used on Linux and macOS.
+herdr_bin = ""
+
 # Text under the status symbol: "cwd" (folder name), "title" (terminal title) or "name" (agent name)
 label = "cwd"
 

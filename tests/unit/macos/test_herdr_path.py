@@ -49,3 +49,21 @@ def test_status_reader_runs_the_found_binary(tmp_path: Path) -> None:
 
 def test_status_reader_without_herdr_returns_none(tmp_path: Path) -> None:
     assert herdr_status_reader("/usr/bin:/bin", tmp_path)() is None
+
+
+def test_a_configured_binary_wins_over_the_search(tmp_path: Path) -> None:
+    searched = make_binary(tmp_path / ".local" / "bin")
+    configured = tmp_path / "elsewhere" / "herdr"
+    configured.parent.mkdir()
+    configured.write_text("#!/bin/sh\necho 'socket: /tmp/configured.sock'\n")
+    configured.chmod(0o755)
+    assert find_herdr("/usr/bin", tmp_path, str(configured)) == configured
+    assert find_herdr("/usr/bin", tmp_path) == searched
+    read = herdr_status_reader("/usr/bin", tmp_path, str(configured))
+    assert read() == "socket: /tmp/configured.sock\n"
+
+
+def test_a_configured_binary_that_is_missing_is_not_silently_replaced(tmp_path: Path) -> None:
+    """The user asked for that one: reading yields nothing, rather than another herdr."""
+    make_binary(tmp_path / ".local" / "bin")
+    assert herdr_status_reader("/usr/bin", tmp_path, str(tmp_path / "nope"))() is None

@@ -17,7 +17,7 @@ from herdr_core.config import Config, ConfigError, RaiseConfig, load_config
 from herdr_core.faces import KeyLayout
 from herdr_core.ports import Raiser, Sleep
 from herdr_core.raise_window import raiser_from_config
-from herdr_core.socket_path import resolve_socket_path
+from herdr_core.socket_path import resolve_socket_path, status_reader
 from herdr_core.wiring import build_herdr_stack, configure_logging
 from linux.config import HERDR_WINDOW, KEY_COUNT, HomeKey, LinuxConfig, load_linux_config
 from linux.controller import DockController
@@ -325,7 +325,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     # Absolute now: the device later changes the working directory for the SDK.
     socket = resolve_socket_path(
-        args.socket or config.herdr_socket, os.environ, Path.home()
+        args.socket or config.herdr_socket,
+        os.environ,
+        Path.home(),
+        status_reader(config.herdr_bin),
     ).absolute()
     log.info("herdr socket: %s", socket)
     daemon, _ = build(config, linux, socket, default_workdir())

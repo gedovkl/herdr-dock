@@ -657,6 +657,20 @@ After milestone 4 (all on Linux, all verified on the M18 unless noted):
   switch can drop the visible count to 0 for an instant, so the plugin waits about 0.3 s before
   stopping the session.
 - ✅ **macOS images**: 64 × 64 PNG data URLs through `setImage` display sharp.
+- ✗ **Plugin page switching** (spikes 2 and 3): the app's plugin server knows a `switchToProfile`
+  command (with a `profile` field), but sending it from a plugin did nothing, with no error, for
+  an existing profile by name, by `.sdProfile` directory name and by UUID, from the action context
+  and from the plugin UUID, and for a profile shipped in the plugin manifest (`Profiles`; the app
+  never installed it). Untried: `"PrivateAPI": true` in the manifest (all built-in plugins set it)
+  with the UUID of a child folder profile of the current page. Treat page switching as
+  unavailable.
+- **App data model** (read from `~/Library/Application Support/HotSpot/StreamDock/profiles/`): a
+  scene is `<UUID>.sdProfile/manifest.json` with `Actions` keyed `"column,row"` (`UUID`, `Name`,
+  `Controller`, `Settings`, `States`...). A folder is a child profile in
+  `<scene>/profiles/<UUID>.sdProfile/`, opened by the built-in `com.hotspot.streamdock.profile.openchild`
+  action (`Settings.ProfileUUID` = the child) and left by `...profile.backtoparent` at `"0,0"`.
+  Exports are zips named `*.streamDockProfile` (root `manifest.json` + `profiles/<UUID>.sdProfile/`).
+  The built-in folder plugins are native (`PrivateAPI`, no code), so a plugin can't reuse them.
 - The `info` argument lists several device types and every event carries a `device` id. The
   plugin only drives the 5 × 3 device.
 - ✅ **Animation rate on Linux**: about 1 ms per key, so not a concern.

@@ -15,6 +15,25 @@ What was built, in order, and what was learned along the way. Architecture and r
 - `read_herdr_status(herdr=...)` takes the binary to run, so a front end with a minimal `PATH`
   can pass an absolute path.
 
+## macOS plugin: manifest, build, install (milestone 5, step 2)
+
+- `macos/com.herdr.dock.sdPlugin/manifest.json` (one action, `com.herdr.dock.agent`), the icon
+  (`tools/make_plugin_icons.py`, drawn by the same `KeyRenderer` as the keys) and
+  `macos/plugin.spec`. `scripts/build-macos-plugin.sh` builds a 15 MB self-contained binary (the
+  script now creates `dist/`); `scripts/install-macos-plugin.sh` installs it.
+- Smoke-tested the frozen binary against a fake StreamDock app: it registers, draws a key
+  (fonts bundled) and exits when the app hangs up.
+- **Found by that test:** herdr reports a temp-dir socket when `$HOME` is missing, so the plugin
+  sets `HOME` itself.
+- New shared setting `herdr_bin` (path to the herdr binary, empty = search), used by Linux, macOS
+  and the console tool through `status_reader()`.
+- INFO logging of key appear/disappear/press and herdr start/stop in
+  `~/Library/Logs/herdr-dock/plugin.log`, which also appears in the app's own log.
+- Reloading: `pkill -f herdr-dock-plugin` makes the app relaunch the plugin with the new binary.
+  New plugins and manifest changes still need an app restart.
+- Page switching from a plugin doesn't work (two spikes, see DESIGN.md "Open items"), so Herdr
+  mode on macOS can't be a plugin-driven page yet.
+
 ## macOS spike (VSD Craft 3.10.205)
 
 A throwaway plugin on the real M18 settled the macOS open items (details in DESIGN.md "Open items"):

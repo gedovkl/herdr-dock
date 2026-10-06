@@ -18,7 +18,7 @@ from herdr_core.models import Agent, LabelStyle
 from herdr_core.paging import paginate
 from herdr_core.raise_window import NullRaiser
 from herdr_core.session import HerdrSession, SessionView
-from herdr_core.socket_path import StatusReader, read_herdr_status, resolve_socket_path
+from herdr_core.socket_path import StatusReader, resolve_socket_path, status_reader
 from herdr_core.theme import STATUS_PRIORITY, STATUS_SYMBOL
 
 _CLEAR = "\033[H\033[2J"
@@ -108,7 +108,7 @@ def main(
     *,
     out: TextIO = sys.stdout,
     env: Mapping[str, str] = os.environ,
-    read_status: StatusReader = read_herdr_status,
+    read_status: StatusReader | None = None,
 ) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(
@@ -123,7 +123,12 @@ def main(
     except ConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    socket = resolve_socket_path(args.socket or config.herdr_socket, env, Path.home(), read_status)
+    socket = resolve_socket_path(
+        args.socket or config.herdr_socket,
+        env,
+        Path.home(),
+        read_status or status_reader(config.herdr_bin),
+    )
     client = HerdrSocketClient(socket)
 
     if args.once:

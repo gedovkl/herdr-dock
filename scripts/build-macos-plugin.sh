@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the StreamDock app plugin bundle into dist/com.herdr.dock.sdPlugin. Milestone 5.
+# Build the StreamDock app plugin bundle into dist/com.herdr.dock.sdPlugin.
 . "$(dirname "$0")/_lib.sh"
 require_os macos
 use_venv
@@ -15,6 +15,7 @@ pyinstaller --noconfirm --clean --distpath "$ROOT/build/pyinstaller" --workpath 
 
 log "assembling $out"
 rm -rf "$out"
+mkdir -p "$ROOT/dist"
 cp -R "$bundle_src" "$out"
 cp "$ROOT/build/pyinstaller/herdr-dock-plugin" "$out/"
 log "built $out"
