@@ -13,16 +13,12 @@ import tempfile
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from herdr_core.animation import Animator
-from herdr_core.client import HerdrSocketClient
 from herdr_core.config import Config, ConfigError, RaiseConfig, load_config
 from herdr_core.faces import KeyLayout
 from herdr_core.ports import Raiser, Sleep
-from herdr_core.presenter import DeckPresenter
 from herdr_core.raise_window import raiser_from_config
-from herdr_core.render import KeyRenderer, Palette
-from herdr_core.session import HerdrSession
 from herdr_core.socket_path import resolve_socket_path
+from herdr_core.wiring import build_herdr_stack, configure_logging
 from linux.config import HERDR_WINDOW, KEY_COUNT, HomeKey, LinuxConfig, load_linux_config
 from linux.controller import DockController
 from linux.device import DeviceInput, M18Device, StreamDockSdk
@@ -262,7 +258,6 @@ class Daemon:
 def build(
     config: Config, linux: LinuxConfig, socket: Path, workdir: Path
 ) -> tuple[Daemon, DockController]:
-    renderer = KeyRenderer(Palette().with_status_colors(config.colors), size=64)
     widgets = build_widgets(linux.home)
     layout = KeyLayout(exit_key=True)
     holder: list[Callable[[DeviceInput], None]] = []
@@ -273,25 +268,21 @@ def build(
         lambda event: holder[0](event),
         brightness=linux.brightness,
     )
-    presenter = DeckPresenter(
-        device, renderer, Animator(config.animation), layout=layout, label=config.label
-    )
-    client = HerdrSocketClient(socket)
-    session = HerdrSession(
-        client,
-        client,
+    stack = build_herdr_stack(
+        config,
+        device,
         linux_raiser(config.raise_window),
-        capacity=layout.session_capacity(KEY_COUNT),
-        on_view=presenter.update,
-        resync_interval=config.resync_seconds,
+        socket,
+        layout=layout,
+        key_count=KEY_COUNT,
     )
     controller = DockController(
         device,
-        renderer,
+        stack.renderer,
         linux.home,
         ShellLauncher(linux.app_launcher),
-        session,
-        presenter,
+        stack.session,
+        stack.presenter,
         layout=layout,
         buttons=dict(linux.buttons),
         focuser=WindowFocuser(),
@@ -325,11 +316,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--socket", help="herdr socket path (default: auto-detect)")
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args(argv)
-    logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
-    logging.getLogger("PIL").setLevel(logging.INFO)  # chunk-level PNG debug noise
+    configure_logging(verbose=args.verbose)
     try:
         config = load_config(args.config)
         linux = load_linux_config(args.config)

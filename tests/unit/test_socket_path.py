@@ -42,3 +42,13 @@ def test_read_herdr_status_returns_stdout(monkeypatch: pytest.MonkeyPatch, tmp_p
     fake.chmod(0o755)
     monkeypatch.setenv("PATH", str(tmp_path))
     assert read_herdr_status() == "socket: /tmp/x.sock\n"
+
+
+def test_read_herdr_status_runs_the_given_binary(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    fake = tmp_path / "my-herdr"
+    fake.write_text('#!/bin/sh\necho "socket: /tmp/$1.sock"\n')
+    fake.chmod(0o755)
+    monkeypatch.setenv("PATH", "/nonexistent")
+    assert read_herdr_status(str(fake)) == "socket: /tmp/status.sock\n"

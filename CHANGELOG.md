@@ -3,6 +3,18 @@
 What was built, in order, and what was learned along the way. Architecture and rationale live in
 [DESIGN.md](DESIGN.md); setup is in [README.md](README.md).
 
+## macOS plugin core (milestone 5, step 1)
+
+- `macos/`: protocol parsing, WebSocket transport, `StreamDockSurface`, visibility lifecycle with a
+  0.3 s grace delay, `HerdrPlugin`, `herdr` lookup and the entry point. One action
+  (`com.herdr.dock.agent`) instead of separate slot and pager actions, because the core already
+  decides what each key shows. Not yet: manifest, PyInstaller spec, install, hardware test.
+- **Shared with Linux, not copied:** `herdr_core/wiring.py` now holds the renderer/presenter/session
+  wiring, the start/stop order and the logging setup. `linux/daemon.py` and `linux/controller.py`
+  use it, with no behaviour change (all Linux tests unchanged and passing).
+- `read_herdr_status(herdr=...)` takes the binary to run, so a front end with a minimal `PATH`
+  can pass an absolute path.
+
 ## macOS spike (VSD Craft 3.10.205)
 
 A throwaway plugin on the real M18 settled the macOS open items (details in DESIGN.md "Open items"):

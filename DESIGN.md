@@ -182,8 +182,8 @@ So on the Mac:
 - **Exit button** = the app's own folder back key. Verified: the app puts a **fixed** back key on
   key 1 of every folder, and a plugin can't replace or move it. So there is no Exit action, and the
   `ExitFace` status summary isn't shown on macOS (`KeyLayout(exit_key=True)`: key 1 is the app's).
-- Keys 2–15 inside the folder hold **"Herdr Agent Slot"** actions, and key 15 can hold the
-  **"Herdr Pager"** action instead.
+- Keys 2–15 inside the folder hold the **"Herdr Agent"** action. Key 15 turns into the pager by
+  itself when there are more than 14 agents.
 - Lifecycle comes from visibility: the first `willAppear` of any plugin action calls
   `HerdrSession.start()`, and when the last one gets `willDisappear` the plugin calls `.stop()`.
   Nothing talks to herdr while you're outside the folder.
@@ -514,8 +514,7 @@ other value is a shell command template.
 
   | UUID | Name | Behaviour |
   |------|------|-----------|
-  | `com.herdr.dock.slot`  | Herdr Agent Slot | Shows agent N of the current page; press → focus + raise |
-  | `com.herdr.dock.pager` | Herdr Pager      | `1/2 ▶`, cycles pages |
+  | `com.herdr.dock.agent` | Herdr Agent | One action for keys 2-15. The core decides what each key shows: an agent (press → focus + raise), the pager (`1/2 ▶`, press → next page) or an empty key |
 
 - Events used: `willAppear`, `willDisappear`, `keyUp`, `didReceiveSettings`. Commands used:
   `setImage` (base64 PNG) and `setTitle` (empty, because the image already has the text).
@@ -564,7 +563,16 @@ other value is a shell command template.
 | `linux/launcher.py` | `ShellLauncher` (`run`, `app` via `uwsm-app`) |
 | `linux/service.py`, `linux/herdr-dock.service` | systemd unit template and renderer |
 | `linux/70-herdr-dock.rules` | udev `uaccess` rule for the M18 |
-| **macos/** | macOS front end: **not built yet** (milestone 5). Planned: `com.herdr.dock.sdPlugin/` (`manifest.json`, `static/img/`, `propertyInspector/`), `plugin_main.py`, `plugin.spec` |
+| `herdr_core/wiring.py` | Shared composition: `build_herdr_stack` (renderer + presenter + session), `start_herdr`/`stop_herdr`, `configure_logging`. Both front ends use it |
+| **macos/** | macOS front end (milestone 5, in progress) |
+| `macos/protocol.py` | The app's plugin protocol: parse events, build `register`/`setImage` messages (pure functions) |
+| `macos/websocket.py` | `WebSocketTransport`: socket thread → asyncio loop |
+| `macos/surface.py` | `StreamDockSurface`: key index ↔ context, `setImage` |
+| `macos/lifecycle.py` | `VisibilityLifecycle`: start herdr on the first visible key, stop 0.3 s after the last |
+| `macos/plugin.py` | `HerdrPlugin`: routes app events (coordinates → key index, presses, device filter) |
+| `macos/herdr_path.py` | Finds `herdr` despite the app's minimal `PATH` |
+| `macos/plugin_main.py` | Composition root and entry point (`-port -pluginUUID -registerEvent -info`) |
+| *still to do* | `com.herdr.dock.sdPlugin/` (`manifest.json`, icons), `plugin.spec` (PyInstaller) |
 | **scripts/** | `setup`, `check`, `test`, `test-integration`, `lint`, `format`, `run-console`, `render-preview`, `run-linux`, `install-linux`, `build-macos-plugin`, `install-macos-plugin` (see README) |
 | `tools/probe_m18.py` | Hardware probe: IDs, firmware, raw key codes, update speed |
 | `tests/unit/` | Fast unit tests (core and `tests/unit/linux/`) |

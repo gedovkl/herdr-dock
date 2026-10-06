@@ -9,11 +9,14 @@ from pathlib import Path
 StatusReader = Callable[[], str | None]
 
 
-def read_herdr_status() -> str | None:
-    """Output of `herdr status server`, or None if herdr isn't installed or hangs."""
+def read_herdr_status(herdr: str = "herdr") -> str | None:
+    """Output of `herdr status server`, or None if herdr isn't installed or hangs.
+
+    `herdr` is the binary to run: a front end with a minimal PATH passes an absolute path.
+    """
     try:
         done = subprocess.run(
-            ["herdr", "status", "server"], capture_output=True, text=True, timeout=3, check=False
+            [herdr, "status", "server"], capture_output=True, text=True, timeout=3, check=False
         )
     except (OSError, subprocess.TimeoutExpired):
         return None

@@ -10,6 +10,7 @@ from typing import Protocol
 from herdr_core.faces import EmptyFace, Face, KeyLayout, LauncherFace
 from herdr_core.ports import KeySurface
 from herdr_core.render import KeyRenderer
+from herdr_core.wiring import start_herdr, stop_herdr
 from linux.config import KEY_COUNT, HomeKey
 from linux.device import ButtonPressed, DeviceInput, KeyPressed
 from linux.widgets import Widget
@@ -127,9 +128,7 @@ class DockController:
             return
         self._mode = Mode.HERDR
         self._home_shown.clear()
-        self._presenter.invalidate()
-        await self._presenter.start()
-        await self._session.start()
+        await start_herdr(self._presenter, self._session)
         if self._on_enter is not None:
             try:
                 await self._on_enter()
@@ -139,9 +138,7 @@ class DockController:
     async def exit_herdr(self) -> None:
         if self._mode is Mode.HOME:
             return
-        # Stop drawing first so the session's final "offline" view never reaches the keys.
-        await self._presenter.stop()
-        await self._session.stop()
+        await stop_herdr(self._presenter, self._session)
         self._mode = Mode.HOME
         await self.draw_home(force=True)
 

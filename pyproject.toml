@@ -57,7 +57,7 @@ allowed-confusables = ["×"]
 
 [tool.mypy]
 python_version = "3.11"
-packages = ["herdr_core", "linux"]
+packages = ["herdr_core", "linux", "macos"]
 strict = true
 
 [[tool.mypy.overrides]]
