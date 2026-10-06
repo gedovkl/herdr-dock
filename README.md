@@ -5,14 +5,14 @@ an agent's status with herdr's own symbols (`×` blocked, `◐` working, `✓` d
 agents blink. Press a key to switch herdr to that agent and bring its terminal window to the front.
 
 - **Linux:** a standalone daemon that drives the M18 directly through the StreamDock Device SDK
-- **macOS:** a plugin for the official StreamDock app (not built yet, milestone 5)
+- **macOS:** a plugin for the official StreamDock app (VSD Craft)
 
 Both use the same `herdr_core` package. See [DESIGN.md](DESIGN.md) for the architecture,
 engineering rules (SOLID, ≥ 80 % test coverage) and milestones, and [CHANGELOG.md](CHANGELOG.md)
 for what was built and what was learned about herdr and the M18 along the way.
 
-**Status:** Linux is done: the daemon works on the M18 and runs as a systemd user service
-(milestones 1–4). The macOS plugin (milestone 5) is still to come.
+**Status:** both platforms work on the M18. Linux: the daemon runs as a systemd user service
+(milestones 1-4). macOS: the plugin for the StreamDock app is verified on the dock (milestone 5).
 
 ## How it works on the dock
 
@@ -267,8 +267,62 @@ systemctl --user restart herdr-dock
 
 ## Setup on macOS
 
-Not available yet (milestone 5). The plan is a plugin for the official StreamDock app that
-appears as a "Herdr" folder of agent keys. See DESIGN.md, "macOS front end".
+A plugin for the official StreamDock app (VSD Craft 3.10 was used). The app owns the home page and
+folders, so the plugin only draws the agent keys: you create one folder and put the **Herdr Agent**
+action on its keys. Tested on macOS 26 (Apple silicon), herdr 0.9.0 and a VSDinside M18.
+
+```bash
+git clone https://github.com/gedovkl/herdr-dock.git ~/Projects/herdr-dock
+cd ~/Projects/herdr-dock
+scripts/setup.sh                    # Python venv, dependencies, PyInstaller
+scripts/build-macos-plugin.sh       # builds dist/com.herdr.dock.sdPlugin (about 15 MB, self-contained)
+scripts/install-macos-plugin.sh     # copies it into the app's plugin folder
+```
+
+Then **quit VSD Craft completely (Cmd+Q) and reopen it** (new plugins are only found at startup).
+
+### Put the keys on the dock
+
+1. On the home page, add the app's own **folder** action to a key. Pressing it opens the folder, and
+   the app puts its fixed back key on key 1 (top-left).
+2. Inside the folder, drag **Herdr Agent** (category **herdr**) onto keys 2-15. Keys 2-5 are the
+   top row, columns 2-5.
+3. Open the folder. Each key shows one agent, in the same order and with the same symbols and colours
+   as on Linux. Keys without an agent stay blank. With more than 14 agents key 15 becomes the pager.
+
+Pressing a key focuses that agent in herdr (it also switches herdr's view to that agent's tab) and brings
+the terminal that runs herdr to the front. This works with tiling managers such as AeroSpace, which
+follow the app to its workspace.
+
+### Configure
+
+The plugin reads the same file as the Linux daemon, `~/.config/herdr-dock/config.toml` (see
+[`config.example.toml`](config.example.toml)). Only the shared settings apply on macOS: `herdr_socket`,
+`herdr_bin` (where the herdr binary is, if it isn't found automatically), `label`, `resync_seconds`,
+animation, `[colors]` and `[raise] macos`. `[raise] macos` is `"herdr-window"` by default (bring forward
+the terminal app that hosts herdr); any other value is a shell command, and `enabled = false` turns
+raising off. The `[linux]` and `[[home]]` tables are ignored.
+
+### Reload, logs, troubleshooting
+
+```bash
+pkill -f herdr-dock-plugin                  # the app relaunches the plugin (after a rebuild or config change)
+tail -f ~/Library/Logs/herdr-dock/plugin.log
+```
+
+New plugins and manifest changes need a full app restart.
+
+| Symptom | Fix |
+|---------|-----|
+| Keys stay black | Black means an empty slot. Agents fill the keys in order from key 2, so put the action on keys 2, 3, 4... The log says which key the plugin sees (`key 2 appeared (column 1, row 2)`) |
+| Keys don't show anything after the plugin restarts | The app doesn't re-announce keys that are already showing: leave the folder and open it again |
+| `herdr offline` on the keys | herdr isn't running, or the socket differs. `herdr status server` shows the socket, and `herdr_socket` / `herdr_bin` in the config override the lookup |
+| A press moves herdr but the terminal doesn't come forward | The log says `no terminal app found`: herdr isn't running in a macOS app (ssh or tmux from elsewhere). Set `[raise] macos` to your own command |
+| A press brings the terminal forward but herdr stays on its tab | Older herdr that lacks `tab.focus`: the log says `could not focus the tab` |
+
+Limits: the whole terminal app comes forward (not one window of it), the Exit key with status dots
+isn't available because the app's own back key owns key 1, and the home-page "Herdr" button is the app's
+folder key, not a plugin key (a plugin can't switch pages: see DESIGN.md).
 
 ## Development
 
@@ -298,7 +352,6 @@ Run from anywhere; they resolve the repo root themselves. Works with macOS's bas
 | `scripts/render-preview.sh [dir]` | Render all key states/frames to PNGs for review |
 | `scripts/run-linux.sh [-v]` | Run the Linux daemon in the foreground |
 | `scripts/install-linux.sh [--udev\|--uninstall]` | Install + start the systemd `--user` service. `--udev`: install the M18 udev rule (sudo). `--uninstall`: remove the service |
-| `scripts/build-macos-plugin.sh` | Build `dist/com.herdr.dock.sdPlugin` with PyInstaller (macOS, milestone 5) |
-| `scripts/install-macos-plugin.sh` | Copy the plugin into the StreamDock app (`STREAMDOCK_PLUGINS_DIR` overrides the path) |
+| `scripts/build-macos-plugin.sh` | Build `dist/com.herdr.dock.sdPlugin` with PyInstaller (macOS) |
+| `scripts/install-macos-plugin.sh` | Copy the plugin into the StreamDock app's plugin folder (`STREAMDOCK_PLUGINS_DIR` overrides it), then restart the app |
 
-Scripts whose code isn't written yet stop with the DESIGN.md milestone that adds it.

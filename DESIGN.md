@@ -632,9 +632,10 @@ flowchart LR
 4. ✅ **Linux service**: systemd `--user` unit (`linux/herdr-dock.service`, bound to
    `graphical-session.target`, restarts on failure) installed by `scripts/install-linux.sh`.
    Home keys can also `focus = "<class regex>"` an existing Hyprland window before launching.
-5. **macOS plugin** (not started): manifest, slot/pager/exit actions, visibility lifecycle,
-   PyInstaller build, install + folder setup guide. Start by resolving the macOS open items below
-   on the Mac.
+5. ✅ **macOS plugin**: one `Herdr Agent` action, visibility lifecycle, PyInstaller build,
+   install script, terminal raiser, README guide. Verified on the M18 with VSD Craft 3.10:
+   agents draw, presses focus the agent, switch herdr's tab and raise the terminal (AeroSpace
+   follows). Home page and folder are the app's own (plugins can't switch pages).
 
 After milestone 4 (all on Linux, all verified on the M18 unless noted):
 

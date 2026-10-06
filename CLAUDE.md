@@ -13,8 +13,11 @@ option), `DESIGN.md` (architecture, decisions, verified facts, milestones, open 
 - Verified on the real M18: home page, Herdr mode, agent switching + window raise, extra buttons,
   unplug/replug, lock blanking, clock/weather, pomodoro/timer.
 - **Not verified on hardware yet:** dock off across a real suspend/resume (unit-tested).
-- **macOS plugin (milestone 5): not started.** Build it on a Mac, starting with DESIGN.md's macOS
-  open items.
+- **macOS plugin (milestone 5): done and verified on the M18** (VSD Craft 3.10, macOS 26, herdr
+  0.9.0, AeroSpace + WezTerm): agents draw, presses focus the agent, switch herdr's tab and raise the
+  terminal. Not built: widgets on macOS (clock, weather, pomodoro, timer), an Exit status key
+  (the app owns the folder back key), and a plugin-driven Herdr page (the app ignores
+  `switchToProfile`).
 
 ## The author's machine
 
@@ -92,6 +95,16 @@ option), `DESIGN.md` (architecture, decisions, verified facts, milestones, open 
 - `ruff format` rewraps code: check that scripted edits actually applied before trusting tests.
 - Only one process can drive the device: `systemctl --user stop herdr-dock` before
   `tools/probe_m18.py` or `scripts/test-integration.sh hardware`, and start it again after.
+
+## The Mac
+
+- macOS 26, Apple silicon, Python 3.14 (`scripts/setup.sh`; pip points at the Axon Nexus mirror:
+  VPN on first). StreamDock app = VSD Craft 3.10 (`~/Library/Application Support/HotSpot/StreamDock`),
+  herdr 0.9.0 at `~/.config/herdr/herdr.sock`, WezTerm, AeroSpace.
+- Plugin loop: `scripts/check.sh`, `scripts/build-macos-plugin.sh`, `scripts/install-macos-plugin.sh`,
+  then `pkill -f herdr-dock-plugin` (the app relaunches it); log `~/Library/Logs/herdr-dock/plugin.log`.
+  Gate the build on `check.sh`'s exit code, not on `| tail`.
+- The app numbers the M18's rows from the bottom (`row 2` is the top row). Agents fill keys from key 2.
 
 ## Platform split
 
