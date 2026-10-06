@@ -17,6 +17,8 @@ What was built, in order, and what was learned along the way. Architecture and r
   ticking, and Herdr-mode animation pauses. The off state survives a USB re-enumeration on
   resume.
 - Without `hyprctl` or `dbus-monitor`, that feature switches itself off with one log line.
+- Verified on the M18 with `omarchy-system-lock`: dark within a second of locking, restored on
+  unlock, same process, no restart. Suspend/resume has unit tests but hasn't been tried on hardware yet.
 
 ## Clock and weather keys
 
