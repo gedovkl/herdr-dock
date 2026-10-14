@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+  "UUID": "com.herdr.dock",
+  "Name": "herdr",
+  "Description": "Shows herdr coding agents as live keys. Press a key to jump to that agent.",
+  "Author": "herdr-dock",
+  "URL": "https://github.com/gedovkl/herdr-dock",
+  "Version": "0.1.0.0",
+  "SDKVersion": 3,
+  "Icon": "static/img/plugin-icon",
+  "Category": "herdr",
+  "CategoryIcon": "static/img/category-icon",
+  "CodePath": "herdr-dock-plugin",
+  "CodePathMac": "herdr-dock-plugin",
+  "Software": { "MinimumVersion": "6.6" },
+  "OS": [{ "Platform": "mac", "MinimumVersion": "13" }],
+  "Actions": [
+    {
+      "UUID": "com.herdr.dock.agent",
+      "Name": "Herdr Agent",
+      "Icon": "static/img/action-icon",
+      "Tooltip": "Shows a herdr agent. Put it on every key you want agents on; the last key becomes the pager when there are more agents than keys.",
+      "Controllers": ["Keypad"],
+      "States": [{ "Image": "static/img/key" }]
+    }
+  ]
+}

@@ -5,8 +5,9 @@ live as the agent's status changes, and press a key to jump to that agent.
 The agent keys appear only in **Herdr mode**. One Herdr button enters the mode, and one Exit
 button leaves it.
 
-Platforms: **Linux** (our own daemon on the Device SDK) and **macOS** (a plugin for the
-official StreamDock app). Both use the same herdr core.
+Front ends: **Linux** (our own daemon on the Device SDK), a **VSD Craft** plugin (the official
+StreamDock app) and an **Elgato** plugin (the Stream Deck app, desktop and Stream Deck Mobile), both
+on macOS. All use the same herdr core, and the two plugins share `streamdock_plugin/`.
 
 ## Engineering rules
 
@@ -15,7 +16,7 @@ These rules are binding for all code in this repo. A change that breaks one isn'
 ### Testing: at least 80 % coverage
 
 - `pytest` + `pytest-cov` + `pytest-asyncio`. Coverage is measured on **our** packages
-  (`herdr_core`, `linux`, `macos`) with branch coverage on. Vendored SDKs are excluded.
+  (`herdr_core`, `linux`, `vsd`, `elgato`, `streamdock_plugin`) with branch coverage on. Vendored SDKs are excluded.
 - The gate is in `pyproject.toml` (`[tool.coverage.report] fail_under = 80`), so
   `pytest --cov` fails below 80 %. `herdr_core` should aim for 90 % or more, because it holds the logic.
 - Every behaviour change ships with tests in the same change. Bug fixes start with a
@@ -45,11 +46,11 @@ These rules are binding for all code in this repo. A change that breaks one isn'
 | **O**pen/closed | Statuses, glyphs and colours come from data (`theme.py`, `[colors]`), not `if` chains. New front ends (another device, Windows) are new adapters, with no edits to `herdr_core`. New live home keys are new widget classes (`face`/`press`/`advance`) plus one line in `build_widgets()`. The controller doesn't change. |
 | **L**iskov substitution | Every implementation of a port must pass the same **contract test suite** (`tests/contracts/test_herdr_ports_contract.py`). `InMemoryHerdr` and `HerdrSocketClient` + `FakeHerdrServer` run the same tests, so session tests on the in-memory fake are valid for the real client. |
 | **I**nterface segregation | Small `typing.Protocol` ports instead of one big interface: `HerdrApi` (list/focus), `HerdrEventSource` + `EventStream` (subscribe), `KeySurface` (`show(key, png)`), `Raiser`, `Clock`, `Sleep`. Key input reaches the core as plain `press(index)` calls from the front end. Consumers depend only on what they use. |
-| **D**ependency inversion | `herdr_core` depends on those Protocols, never on the StreamDock SDK, the plugin SDK, `subprocess`, sockets or `time` directly. Concrete adapters are wired up in one composition root per front end (`linux/daemon.py`, `macos/plugin_main.py`). |
+| **D**ependency inversion | `herdr_core` depends on those Protocols, never on the StreamDock SDK, the plugin SDK, `subprocess`, sockets or `time` directly. Concrete adapters are wired up in one composition root per front end (`linux/daemon.py`, `vsd/plugin_main.py`, `elgato/plugin_main.py`). |
 
 ### Code conventions
 
-- Python ≥ 3.11, fully type-annotated, `mypy --strict` clean on `herdr_core`, `linux` **and** `macos`
+- Python ≥ 3.11, fully type-annotated, `mypy --strict` clean on `herdr_core`, `linux`, `vsd`, `elgato` **and** `streamdock_plugin`
   (the vendor SDK is untyped and excluded). `ruff` for lint and format (line length 100;
   `×` is allowed as a confusable, because it's herdr's glyph).
 - Immutable value objects (`@dataclass(frozen=True, slots=True)`) for `Agent`, `SessionView`,
@@ -75,14 +76,15 @@ These rules are binding for all code in this repo. A change that breaks one isn'
 | Device           | StreamDock M18: 15 LCD keys (3×5), 64×64 JPEG; animation = host-side frame swaps |
 | Shared core      | `herdr_core` Python package: herdr socket client, agent store, paging, key renderer, focus + raise |
 | Linux front end  | Our own daemon on `StreamDock-Device-SDK/Python-SDK`, with a TOML-defined home page (apps, commands, Herdr key) |
-| macOS front end  | StreamDock app plugin (`.sdPlugin`): our own small client of the app's WebSocket plugin protocol (`websocket-client`), packaged with PyInstaller and launched through `CodePathMac` |
+| VSD front end    | `vsd/`: VSD Craft (StreamDock app) plugin (`.sdPlugin`): our own small client of the app's WebSocket plugin protocol (`websocket-client`), packaged with PyInstaller and launched through `CodePathMac` |
+| Elgato front end | `elgato/`: the same plugin client for the Elgato Stream Deck app (same protocol, different manifest and key numbering), shared code in `streamdock_plugin/` |
 | herdr transport  | Native socket API (NDJSON over Unix socket); no herdr plugin SDK required |
 | Scope            | All agents in all workspaces of the default herdr session |
 | Mode             | One Herdr button enters Herdr mode, one Exit button leaves it. herdr is connected **only while in Herdr mode** |
 | Key press        | `agent.focus` (marks the agent seen), then `tab.focus` (herdr 0.9 UIs only follow that), then raise the terminal window; the raise command is set in config for each OS |
 | Overflow         | Pager key when agents exceed the free keys |
 | Raise (Linux)    | Default `herdr-window`: focus the Hyprland window whose process owns the herdr client (`/proc` parent walk); any terminal works |
-| Raise (macOS)    | Default `herdr-window`: `open` the application bundle above the attached herdr client (`ps` ancestry); works with tiling managers such as AeroSpace |
+| Raise (macOS, both plugins) | Default `herdr-window`: `open` the application bundle above the attached herdr client (`ps` ancestry); works with tiling managers such as AeroSpace |
 | Home page (Linux) | TOML `[[home]]` keys: `herdr`, `app`, `run`, optional `focus` (focus a running window instead of launching), and live `widget`s (clock, weather, pomodoro, timer) |
 | Weather          | Open-Meteo (free, no API key); location, units and refresh interval in the config |
 | Lock / sleep     | Dock off while the session is locked (Hyprland session-lock flag) or the machine sleeps (logind `PrepareForSleep` plus a delay inhibitor) |
@@ -93,7 +95,7 @@ These rules are binding for all code in this repo. A change that breaks one isn'
 
 ```mermaid
 flowchart TB
-    subgraph core["herdr_core — shared Python package, identical on both platforms"]
+    subgraph core["herdr_core — shared Python package, identical in every front end"]
         direction LR
         client["HerdrClient<br/>socket RPC + events.subscribe<br/>reconnect / backoff"]
         store["AgentStore<br/>pane_id → Agent<br/>stable slots, paging"]
@@ -112,10 +114,10 @@ flowchart TB
         lpages --> lsdk
     end
 
-    subgraph mac["macOS front end — com.herdr.dock.sdPlugin"]
+    subgraph mac["Plugin front ends — vsd/ and elgato/ (com.herdr.dock.sdPlugin)"]
         direction TB
         mplugin["One action: Herdr Agent (keys 2-15)<br/>willAppear → start · willDisappear → stop"]
-        mapp["StreamDock app<br/>setImage(base64) per key context"]
+        mapp["VSD Craft or Elgato app<br/>setImage(base64) per key context"]
         mplugin <-->|WebSocket| mapp
     end
 
@@ -172,18 +174,20 @@ The daemon owns the whole device, so the Exit key is ours. Entering Herdr mode c
 `HerdrSession.start()`, and Exit calls `.stop()`, which closes the subscription and drops
 the herdr connection. Then the daemon redraws the home page.
 
-### macOS
+### VSD Craft and Elgato
 
-The StreamDock app owns the pages, and the plugin SDK has **no command to switch pages or
+The VSD Craft app owns the pages, and the plugin SDK has **no command to switch pages or
 profiles** (open request:
 [StreamDock-Plugin-SDK#33](https://github.com/MiraboxSpace/StreamDock-Plugin-SDK/issues/33)). The
 app's server does know a `switchToProfile` command, but it did nothing when a plugin sent it (see
-Open items). So on the Mac:
+Open items). So in VSD Craft:
 
 - **Herdr button** = a normal **folder** you create in the StreamDock app.
 - **Exit button** = the app's own folder back key. Verified: the app puts a **fixed** back key on
   key 1 of every folder, and a plugin can't replace or move it. So there is no Exit action, and the
-  `ExitFace` status summary isn't shown on macOS (`KeyLayout(exit_key=True)`: key 1 is the app's).
+  `ExitFace` status summary isn't shown in the plugins (`KeyLayout(exit_key=True)`: key 1 is the app's).
+  The Elgato app does the same for folders (back key at the grid's top-left), so `[elgato] folder`
+  (default on) reserves it the same way.
 - Keys 2–15 inside the folder hold the **"Herdr Agent"** action. Key 15 turns into the pager by
   itself when there are more than 14 agents.
 - Lifecycle comes from visibility: the first `willAppear` of any plugin action calls
@@ -275,17 +279,18 @@ index `capacity - 1` is the pager when one is shown.
 
 Slot numbering is logical (0..n), and each front end maps it to physical keys:
 - Linux: the daemon maps logical keys 2..15 to slot indexes.
-- macOS: the plugin derives the key from the `coordinates` (column, row) in the `willAppear`
+- VSD Craft: the plugin derives the key from the `coordinates` (column, row) in the `willAppear`
   payload; the app's rows count from the bottom (see Open items), so the key index is
-  `(2 - row) * 5 + column`.
+  `(2 - row) * 5 + column` (`vsd/grid.py`).
+- Elgato: rows count from the top, optionally turned for a phone held upright (`elgato/grid.py`).
 
 ### herdr API facts (verified against herdr 0.8.2, protocol 20; 0.9.0 differences are marked)
 
 - Socket: `herdr status server` prints the path (`~/.config/herdr/herdr.sock` here). The core
   resolves the path in this order: config value, then the `HERDR_SOCKET` env var, then the
   `herdr status server` output, then the default path. `herdr_bin` in the config names the
-  binary. On macOS the StreamDock app starts the plugin with a minimal `PATH`, so
-  `macos/herdr_path.py` also searches `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin` and
+  binary. On macOS the apps start the plugins with a minimal `PATH`, so
+  `streamdock_plugin/herdr_path.py` also searches `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin` and
   `~/.cargo/bin`, and the plugin sets `$HOME` if it is missing (without it herdr reports a
   temp-dir socket).
 - Framing: one JSON object per line. Request: `{"id","method","params"}`. Response:
@@ -359,7 +364,7 @@ blocked agent is in their scope, or pulse when only `done` is (with `done` in `a
 - Colours: `[colors]` in config overrides any status colour (`blocked = "#ff0000"`).
 - Fonts are bundled in `herdr_core/fonts/`: **DejaVu Sans** for the symbols and **DejaVu Sans
   Condensed Bold** for the text, with the DejaVu licence. They cover `× ✓ ◐ ◓ ◑ ◒ ○ · ▶ ◀ …`,
-  so keys look identical on Linux and macOS.
+  so keys look identical on Linux and in the plugins.
 - `scripts/render-preview.sh` writes every face and frame plus `sheet.png` to `build/preview/`.
 
 ### Rendering pipeline
@@ -378,7 +383,7 @@ flowchart LR
 - `animation.py`: `Animator` decides each face's `Effect` (none/spin/blink/pulse) and its frame
   as a pure function of time.
 - `render.py`: `KeyRenderer` draws `(face, effect, frame)` to PNG bytes at any size (64 px for the
-  M18, larger for the macOS app) and caches them.
+  M18, 144 px for the Elgato app) and caches them.
 - `presenter.py`: `DeckPresenter` is the session's `on_view` target. It sends only keys whose
   `(face, effect, frame)` changed to a `KeySurface`, and runs the ticker only while something is
   animated. `invalidate()` redraws everything after a device replug.
@@ -387,7 +392,7 @@ flowchart LR
 
 There's no on-device animation. Both platforms swap static frames from the host:
 
-- **macOS app:** animated icons you set by hand in the StreamDock app are GIFs that the
+- **VSD Craft app:** animated icons you set by hand in the app are GIFs that the
   app plays frame by frame. A plugin gets the same effect by calling `setImage` repeatedly.
 - **Linux SDK:** `set_key_gif` and `GifController` also stream frames from the host.
 
@@ -522,9 +527,9 @@ runs in, whichever terminal that is, using Hyprland ≥ 0.55 Lua dispatch
 (`hl.dsp.focus({ window = "address:…" })`) with the old `focuswindow` syntax as a fallback. Any
 other value is a shell command template.
 
-## macOS front end: `com.herdr.dock.sdPlugin`
+## VSD Craft front end: `vsd/com.herdr.dock.sdPlugin`
 
-- Speaks the app's plugin protocol itself (`macos/protocol.py`, `macos/websocket.py`) instead of
+- Speaks the app's plugin protocol itself (`streamdock_plugin/protocol.py`, `streamdock_plugin/websocket.py`) instead of
   using the official `SDPythonSDK` classes: the protocol is a few JSON messages and the core
   needs no Action-class model. It is packaged with PyInstaller as one executable named in the
   manifest's `CodePathMac` (the app also reads `CodePathWin`), with `herdr_core` and the fonts
@@ -542,15 +547,63 @@ other value is a shell command template.
   after the last one is gone. The wait covers a page switch, where the app sends every
   `willDisappear` before the new page's `willAppear`.
 - Raising: `[raise] macos = "herdr-window"` (the default) brings the terminal app that hosts
-  the attached herdr client to the front (`macos/raiser.py`). Any other value is a shell command.
+  the attached herdr client to the front (`streamdock_plugin/raiser.py`). Any other value is a shell command.
 - The log is `~/Library/Logs/herdr-dock/plugin.log` (rotating), and the app copies the plugin's
   stderr into its own log. After a rebuild, `pkill -f herdr-dock-plugin` makes the app relaunch
   the plugin; new plugins and manifest changes need an app restart.
-- Install: `scripts/install-macos-plugin.sh` copies the `.sdPlugin` folder into the StreamDock
+- Build and install: `scripts/build-vsd-plugin.sh`, then `scripts/install-vsd-plugin.sh`, which copies the `.sdPlugin` folder into the StreamDock
   plugins directory; restart the app. Then add the app's folder action to a home-page key and drag
   **Herdr Agent** onto keys 2-15 inside it (README has the steps).
 - Using the Device SDK daemon on macOS is still possible, but it can't run alongside the
-  StreamDock app because only one can hold the device. That's why the plugin is the macOS route.
+  StreamDock app because only one can hold the device. That's why the plugins are the macOS route.
+
+## Elgato front end: `elgato/com.herdr.dock.sdPlugin`
+
+Status: **verified in the Elgato app with Stream Deck Mobile** (the author has no Stream Deck
+hardware; the phone appears in the desktop app as a virtual dock and the plugin runs on the Mac).
+Verified: the app launches the unsigned PyInstaller binary, keys appear with top-down
+`(column, row)` coordinates on a 5 × 3 layout, images draw, and a press reaches the session.
+
+- Same protocol, same code: Elgato's plugin protocol matches the VSD one (`-port -pluginUUID
+  -registerEvent -info`, a `register` message, `willAppear`/`willDisappear`/`keyUp`,
+  `deviceDidConnect`, `setImage` with a base64 PNG), per
+  <https://docs.elgato.com/streamdeck/sdk/references/websocket/plugin/>. So `elgato/` only supplies
+  a `PluginSpec`: the action UUID, an `ElgatoGrid` and a `KeyLayout`.
+- Native plugin: Elgato recommends Node.js, but the manifest's `CodePath`/`CodePathMac` may name
+  an executable (docs: "Creating native plugins is an advanced technique"). We ship the PyInstaller
+  binary, so the core stays Python. Manifest: `SDKVersion` 3, `Software.MinimumVersion` 6.6, a
+  four-part `Version`, extension-less image paths with `@2x` variants (plugin icon 256, key image
+  72, list icons 20/28 white on transparent), `Controllers: ["Keypad"]`.
+- **Grid**: the app reports `(column, row)` in the dock's own landscape 5 × 3 grid from the top-left
+  (Stream Deck Mobile, device type 3, `devicePixelRatio` 2, is reported as 5 × 3 too). Held upright,
+  the phone shows that grid turned 90° clockwise (3 × 5), so the folder back key at app `(0, 0)` is
+  at the phone's row 1, column 3. `ElgatoGrid` numbers keys in reading order (turned if
+  `[elgato] portrait`), and with `folder` (default) puts the back key at index 0 and the rest after
+  it; `[elgato] mirror` reverses each displayed row for a display that runs right to left (the
+  phone changed from upright to sideways-and-mirrored between two runs while the app's coordinates
+  stayed the same). `KeyLayout(exit_key=folder)` then reserves key 0, exactly as on VSD. A first version assumed
+  "no back key" and silently hid the first agent behind the app's back key.
+- **Dock size** is fixed per run because the core sizes its pages up front: `[elgato] columns/rows`
+  in the config, else the first device in the app's `-info` (which may list devices that aren't
+  connected), else 5 × 3. A dock of another size is ignored with one warning. Image size is
+  `[elgato] key_size` (default 144, i.e. the @2x key size).
+- **Live reload**: `GridReload` (in the `PluginSpec`) names the config file and a `load()` that returns
+  a new grid. `FileWatcher` (`streamdock_plugin/watch.py`, polling, ~1 s, injectable sleep and
+  signature) calls it on a change and `HerdrPlugin.set_grid` renumbers the keys already on screen
+  (it remembers each visible `willAppear`, because the app never repeats it) and redraws. Only
+  `portrait` and `mirror` are applied live: the session's capacity and the renderer are fixed at
+  start, so `columns`, `rows`, `key_size`, `corner_radius` and `folder` log a restart warning. A
+  failing `load()` (half-edited file) keeps the current grid. Why: the phone's orientation follows
+  how it is held, and the plugin can't see it.
+- **Rounded keys**: the app draws rounded keys, so `KeyRenderer(corner_radius=…)` (fraction of the
+  key size, `[elgato] corner_radius`, default 0.15) returns RGBA with transparent corners and draws
+  the focus border along the rounded outline. VSD keeps square RGB keys.
+- Install: `scripts/build-elgato-plugin.sh` → `dist/elgato/`, `scripts/install-elgato-plugin.sh` →
+  `~/Library/Application Support/com.elgato.StreamDeck/Plugins/`. Log: `elgato-plugin.log`.
+- Verified `-info` (Elgato Stream Deck 7.6, macOS 26): `devices` lists only the connected
+  `Stream Deck Mobile` with `size` 5 × 3, so the size comes from the app. Still unchecked: other
+  Mobile layouts (6 and 32 keys), the rotation direction beyond the back-key corner, and a long run.
+  Elgato's profile switching (`switchProfile`) could give a real Herdr page, which VSD can't.
 
 ## Project layout
 
@@ -561,7 +614,7 @@ other value is a shell command template.
 | `CHANGELOG.md` | What was built, in order, and what was learned |
 | `CLAUDE.md` | Working agreements and current state for AI-assisted sessions (loaded automatically) |
 | `config.example.toml` | Every setting, documented. **Mirrors the author's own config** |
-| `pyproject.toml` | Package metadata, dependencies and extras (`dev`, `linux`, `macos`), pytest/coverage/ruff/mypy config |
+| `pyproject.toml` | Package metadata, dependencies and extras (`dev`, `linux`, `plugins`), pytest/coverage/ruff/mypy config |
 | **herdr_core/** | Shared, platform-independent |
 | `herdr_core/models.py`, `errors.py`, `events.py` | `Agent`/`AgentStatus`, typed errors, typed events + parser |
 | `herdr_core/ports.py` | `typing.Protocol` ports: `HerdrApi`, `HerdrEventSource`, `EventStream`, `KeySurface`, `Raiser`, `Clock`, `Sleep` |
@@ -590,22 +643,32 @@ other value is a shell command template.
 | `linux/service.py`, `linux/herdr-dock.service` | systemd unit template and renderer |
 | `linux/70-herdr-dock.rules` | udev `uaccess` rule for the M18 |
 | `herdr_core/wiring.py` | Shared composition: `build_herdr_stack` (renderer + presenter + session), `start_herdr`/`stop_herdr`, `configure_logging`. Both front ends use it |
-| **macos/** | macOS front end (milestone 5, done) |
-| `macos/protocol.py` | The app's plugin protocol: parse events, build `register`/`setImage` messages (pure functions) |
-| `macos/websocket.py` | `WebSocketTransport`: socket thread → asyncio loop |
-| `macos/transport.py` | `PluginTransport` protocol (`send`), what the surface depends on |
-| `macos/surface.py` | `StreamDockSurface`: key index ↔ context, `setImage` |
-| `macos/lifecycle.py` | `VisibilityLifecycle`: start herdr on the first visible key, stop 0.3 s after the last |
-| `macos/plugin.py` | `HerdrPlugin`: routes app events (coordinates → key index, presses, device filter) |
-| `macos/herdr_path.py` | Finds `herdr` despite the app's minimal `PATH` |
-| `macos/plugin_main.py` | Composition root and entry point (`-port -pluginUUID -registerEvent -info`) |
-| `macos/raiser.py` | `TerminalRaiser` (`ps` + `open`), `macos_raiser()` picks it for `herdr-window` |
-| `macos/com.herdr.dock.sdPlugin/`, `macos/plugin.spec` | Plugin bundle source (`manifest.json`, icon) and the PyInstaller spec |
+| **streamdock_plugin/** | Plugin code shared by every StreamDock-style app front end (`vsd/`, `elgato/`) |
+| `streamdock_plugin/protocol.py` | The app's plugin protocol: parse events, build `register`/`setImage` messages (pure functions) |
+| `streamdock_plugin/websocket.py` | `WebSocketTransport`: socket thread → asyncio loop |
+| `streamdock_plugin/transport.py` | `PluginTransport` protocol (`send`), what the surface depends on |
+| `streamdock_plugin/surface.py` | `StreamDockSurface`: key index ↔ context, `setImage` |
+| `streamdock_plugin/lifecycle.py` | `VisibilityLifecycle`: start herdr on the first visible key, stop 0.3 s after the last |
+| `streamdock_plugin/grid.py` | `Grid` protocol: how an app numbers its keys and which docks it accepts. The one place the apps differ |
+| `streamdock_plugin/plugin.py` | `HerdrPlugin`: routes app events (coordinates → key index via the `Grid`, presses, device filter) |
+| `streamdock_plugin/runner.py` | `PluginSpec` (action, grid, key count/size, layout), argument parsing, `run_plugin`, `main` (`-port -pluginUUID -registerEvent -info`) |
+| `streamdock_plugin/herdr_path.py` | Finds `herdr` despite the app's minimal `PATH` |
+| `streamdock_plugin/raiser.py` | `TerminalRaiser` (`ps` + `open`), `macos_raiser()` picks it for `herdr-window` |
+| **vsd/** | VSD Craft front end (milestone 5, done) |
+| `vsd/grid.py` | `M18Grid`: 5×3, rows numbered from the bottom, and the plugin's `ACTION_UUID` |
+| `vsd/plugin_main.py` | Composition root: the VSD `PluginSpec` and entry point |
+| `vsd/com.herdr.dock.sdPlugin/`, `vsd/plugin.spec` | Plugin bundle source (`manifest.json`, icon) and the PyInstaller spec |
+| **elgato/** | Elgato Stream Deck app front end (verified with Stream Deck Mobile) |
+| `elgato/grid.py` | `ElgatoGrid(columns, rows)`: rows count from the top, any size; rejects a dock of another size |
+| `elgato/config.py` | `[elgato]` (`columns`, `rows`, `key_size`), `devices_from_info` (the app's `-info`), `choose_size` |
+| `elgato/plugin_main.py` | Composition root: builds the `PluginSpec` from config + `-info`, and the live-reload hook (`reloaded_grid`) |
+| `streamdock_plugin/watch.py` | `FileWatcher`: polls a file's modification time and size, calls back on a change |
+| `elgato/com.herdr.dock.sdPlugin/`, `elgato/plugin.spec` | Elgato manifest (SDKVersion 3, `CodePath` = native executable, 1x/@2x images) and PyInstaller spec |
 | `herdr_core/processes.py` | `Process`, `herdr_clients`, `ancestor_pids`/`ancestors`, `run_exec`: finding the terminal that hosts the herdr client, shared by Linux and macOS |
-| **scripts/** | `setup`, `check`, `test`, `test-integration`, `lint`, `format`, `run-console`, `render-preview`, `run-linux`, `install-linux`, `build-macos-plugin`, `install-macos-plugin` (see README) |
+| **scripts/** | `setup`, `check`, `test`, `test-integration`, `lint`, `format`, `run-console`, `render-preview`, `run-linux`, `install-linux`, `build-vsd-plugin`, `install-vsd-plugin`, `build-elgato-plugin`, `install-elgato-plugin` (see README) |
 | `tools/probe_m18.py` | Hardware probe: IDs, firmware, raw key codes, update speed |
-| `tools/make_plugin_icons.py` | Renders the macOS plugin icon with the same `KeyRenderer` as the keys |
-| `tests/unit/` | Fast unit tests (core, `tests/unit/linux/` and `tests/unit/macos/`) |
+| `tools/make_plugin_icons.py` | Renders the VSD and Elgato plugin icons with the same `KeyRenderer` as the keys |
+| `tests/unit/` | Fast unit tests (core, `tests/unit/linux/` and `tests/unit/vsd/`, `tests/unit/elgato/` and `tests/unit/streamdock_plugin/`) |
 | `tests/contracts/` | Port contract suite run against every implementation |
 | `tests/fakes/` | `FakeHerdrServer`, `InMemoryHerdr`, `RecordingRaiser`, `FakeSurface`, `FakeClock`, `FakeSdk` |
 | `tests/integration/` | Opt-in: `herdr_live` (throwaway headless herdr) and `hardware` (the M18) |
@@ -614,9 +677,11 @@ other value is a shell command template.
 flowchart LR
     core[herdr_core]
     linux[linux/daemon.py] --> core
-    macos[macos/plugin_main.py] --> core
+    vsd[vsd/plugin_main.py] --> core
     linux --> sdk[StreamDock-Device-SDK/Python-SDK]
-    macos --> psdk[StreamDock Plugin SDK · Python]
+    vsd --> shared[streamdock_plugin] --> psdk
+    elgato[elgato/plugin_main.py] --> core
+    elgato --> shared[StreamDock Plugin SDK · Python]
     tests[tests/] --> core
 ```
 
@@ -629,7 +694,7 @@ flowchart LR
 | Device absent at start (Linux) | Daemon runs normally and logs "waiting for the M18" once. It polls every `poll_seconds` and draws the current mode when the dock appears |
 | Device unplugged mid-run (Linux) | The hidraw node is checked every 0.25 s and before **every** write. On removal the device is closed *without* the SDK's disconnect write (writing to a removed device can kill the process natively), and later key updates are dropped. On replug: reconnect, then redraw the current mode. Verified on the M18 while animating: same PID, no restart, clean log |
 | Device or SDK errors | The watcher never dies: errors are logged once per distinct message. Presenter draw failures are logged once per failure streak and retried on the next push |
-| StreamDock app restarts (macOS) | The app relaunches the plugin and announces its keys again. If only the plugin restarts (`pkill`), the app does not replay `willAppear` for keys already showing: leave the folder and open it again |
+| VSD Craft restarts | The app relaunches the plugin and announces its keys again. If only the plugin restarts (`pkill`), the app does not replay `willAppear` for keys already showing: leave the folder and open it again |
 | Rapid status flapping | No debounce: only keys whose `(face, effect, frame)` changed are sent, and a key update costs about 1 ms on the M18 |
 | Weather fetch fails / offline | Keep the last reading (or `--`), log once, retry after 60 s |
 | `hyprctl` unavailable | Raise/focus fall back to "no window" (apps still launch). The lock monitor keeps its last state and backs off, and never guesses "unlocked" |
@@ -650,10 +715,13 @@ flowchart LR
 4. ✅ **Linux service**: systemd `--user` unit (`linux/herdr-dock.service`, bound to
    `graphical-session.target`, restarts on failure) installed by `scripts/install-linux.sh`.
    Home keys can also `focus = "<class regex>"` an existing Hyprland window before launching.
-5. ✅ **macOS plugin**: one `Herdr Agent` action, visibility lifecycle, PyInstaller build,
+5. ✅ **VSD Craft plugin**: one `Herdr Agent` action, visibility lifecycle, PyInstaller build,
    install script, terminal raiser, README guide. Verified on the M18 with VSD Craft 3.10:
    agents draw, presses focus the agent, switch herdr's tab and raise the terminal (AeroSpace
    follows). Home page and folder are the app's own (plugins can't switch pages).
+6. ✅ **Shared plugin layer and Elgato plugin**: `macos/` became `vsd/`, the app-agnostic code moved to
+   `streamdock_plugin/` (`Grid`, `PluginSpec`), and `elgato/` added for the Elgato Stream Deck app.
+   Verified with Stream Deck Mobile. VSD behaviour unchanged.
 
 After milestone 4 (all on Linux, all verified on the M18 unless noted):
 
@@ -671,24 +739,24 @@ After milestone 4 (all on Linux, all verified on the M18 unless noted):
   "system resumed"). The delay inhibitor is held (`systemd-inhibit --list` shows `herdr-dock`).
 - ✅ **M18 hardware**: `5548:1000`, 3 extra buttons (`0x25/0x30/0x31`). Key mapping verified.
   See "M18 facts" above.
-- ✅ **macOS Exit key** (spike, VSD Craft 3.10.205): every folder gets a **fixed** back key on
+- ✅ **VSD Exit key** (spike, VSD Craft 3.10.205): every folder gets a **fixed** back key on
   key 1 that a plugin can't replace. The plugin has no Exit action. A plugin still can't go
   back itself until the SDK adds page switching (#33).
-- ✅ **macOS slot mapping**: `willAppear`/`willDisappear`/`keyDown`/`keyUp` carry
+- ✅ **VSD slot mapping**: `willAppear`/`willDisappear`/`keyDown`/`keyUp` carry
   `payload.coordinates {column, row}` (0-based). The M18 is 5 × 3. **Rows count from the bottom**:
   the folder's fixed back key (top-left) is stored at column 0, row 2. So key index (0 = top-left,
   left to right, top to bottom) = `(2 - row) * 5 + column`. No "slot #" setting is needed.
-- ✅ **macOS plugin directory**: `~/Library/Application Support/HotSpot/StreamDock/plugins/`.
-- ✅ **macOS launch**: `CodePathMac` can be a script or executable. The app runs it with
+- ✅ **VSD plugin directory**: `~/Library/Application Support/HotSpot/StreamDock/plugins/`.
+- ✅ **VSD launch**: `CodePathMac` can be a script or executable. The app runs it with
   `-port -pluginUUID -registerEvent -info`, cwd = the plugin folder, as the user, with
   `PATH=/usr/bin:/bin:/usr/sbin:/sbin;/Applications/VSD Craft.app/Contents/MacOS`. So the plugin
   must search for `herdr` itself (`~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`).
-- ✅ **macOS lifecycle**: opening a folder sends `willDisappear` for the page's keys and then
+- ✅ **VSD lifecycle**: opening a folder sends `willDisappear` for the page's keys and then
   `willAppear` for the folder's keys (new contexts). Leaving does the reverse. Dragging a key
   keeps its context and sends `willDisappear` + `willAppear` with the new coordinates. A page
   switch can drop the visible count to 0 for an instant, so the plugin waits about 0.3 s before
   stopping the session.
-- ✅ **macOS images**: 64 × 64 PNG data URLs through `setImage` display sharp.
+- ✅ **VSD images**: 64 × 64 PNG data URLs through `setImage` display sharp.
 - ✗ **Plugin page switching** (spikes 2 and 3): the app's plugin server knows a `switchToProfile`
   command (with a `profile` field), but sending it from a plugin did nothing, with no error, for
   an existing profile by name, by `.sdProfile` directory name and by UUID, from the action context
@@ -710,7 +778,7 @@ After milestone 4 (all on Linux, all verified on the M18 unless noted):
   Linux machine that it works there or at least only logs one warning.
 - **`done` status on herdr 0.9**: an unseen finished agent is reported as `idle` right away in a
   headless session, so `attention = ["done"]` may never pulse. Check with a real attached client.
-- **Animation rate on macOS**: measure `setImage` through the StreamDock app, and check whether it
+- **Animation rate in the plugins**: measure `setImage` through the apps, and check whether it
   accepts an animated GIF data URL and plays it.
 - **Multiple herdr sessions**: out of scope for now. The client already takes a socket path.
 - **Raising with single-process terminals** (foot --server, Ghostty single-instance,

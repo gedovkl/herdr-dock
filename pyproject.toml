@@ -17,13 +17,13 @@ dev = [
     "pytest-cov>=5",
     "ruff>=0.6",
     "mypy>=1.10",
-    "websocket-client>=1.8",  # macos/ is type-checked and unit-tested on every OS
+    "websocket-client>=1.8",  # vsd/ and streamdock_plugin/ are type-checked and unit-tested on every OS
 ]
 linux = ["pyudev>=0.24"]
-macos = ["websocket-client>=1.8", "pyinstaller>=6.12"]
+plugins = ["websocket-client>=1.8", "pyinstaller>=6.12"]
 
 [tool.setuptools.packages.find]
-include = ["herdr_core*", "linux*", "macos*"]
+include = ["herdr_core*", "linux*", "vsd*", "elgato*", "streamdock_plugin*"]
 
 [tool.setuptools.package-data]
 herdr_core = ["fonts/*.ttf", "fonts/*.txt"]
@@ -39,7 +39,7 @@ addopts = "-m 'not hardware and not herdr_live' --strict-markers"
 
 [tool.coverage.run]
 branch = true
-source = ["herdr_core", "linux", "macos"]
+source = ["herdr_core", "linux", "vsd", "elgato", "streamdock_plugin"]
 
 [tool.coverage.report]
 fail_under = 80
@@ -58,7 +58,7 @@ allowed-confusables = ["×"]
 
 [tool.mypy]
 python_version = "3.11"
-packages = ["herdr_core", "linux", "macos"]
+packages = ["herdr_core", "linux", "vsd", "elgato", "streamdock_plugin"]
 strict = true
 
 [[tool.mypy.overrides]]

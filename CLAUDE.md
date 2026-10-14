@@ -12,10 +12,16 @@ option), `DESIGN.md` (architecture, decisions, verified facts, milestones, open 
   Runs as a systemd user service on the author's machine.
 - Verified on the real M18: home page, Herdr mode, agent switching + window raise, extra buttons,
   unplug/replug, lock blanking, clock/weather, pomodoro/timer.
+- **Elgato plugin (`elgato/`): done and verified with Stream Deck Mobile** (agents draw, presses work).
+  Config `[elgato]`: `portrait` (phone held upright shows the 5×3 dock turned clockwise), `mirror` (rows shown right to left; `portrait` and `mirror` reload live when `config.toml`
+  changes), `folder`
+  (reserve the app's back key), `corner_radius`. The author has no Stream Deck hardware; the phone is
+  a virtual dock in the Mac app. Shares all logic with the VSD plugin through `streamdock_plugin/`;
+  see DESIGN.md.
 - **Not verified on hardware yet:** dock off across a real suspend/resume (unit-tested).
-- **macOS plugin (milestone 5): done and verified on the M18** (VSD Craft 3.10, macOS 26, herdr
+- **VSD Craft plugin (`vsd/`, milestone 5): done and verified on the M18** (VSD Craft 3.10, macOS 26, herdr
   0.9.0, AeroSpace + WezTerm): agents draw, presses focus the agent, switch herdr's tab and raise the
-  terminal. Not built: widgets on macOS (clock, weather, pomodoro, timer), an Exit status key
+  terminal. Not built (in either plugin): widgets (clock, weather, pomodoro, timer), an Exit status key
   (the app owns the folder back key), and a plugin-driven Herdr page (the app ignores
   `switchToProfile`).
 
@@ -51,7 +57,7 @@ option), `DESIGN.md` (architecture, decisions, verified facts, milestones, open 
 - Every behaviour change ships with tests. Bug fixes start with a failing test.
 - Unit tests use the fakes in `tests/fakes/`, never real hardware, herdr, the StreamDock app or
   the window manager. Real-world tests are opt-in (`-m herdr_live`, `-m hardware`).
-- `scripts/check.sh` must pass before committing: ruff, `mypy --strict` on `herdr_core`, `linux` and `macos`,
+- `scripts/check.sh` must pass before committing: ruff, `mypy --strict` on `herdr_core`, `linux`, `vsd`, `elgato` and `streamdock_plugin`,
   unit tests with branch coverage ≥ 80 %.
 - Python ≥ 3.11, frozen dataclasses for value objects, asyncio for I/O, `logging` instead of print
   (except CLI output).
@@ -64,7 +70,8 @@ option), `DESIGN.md` (architecture, decisions, verified facts, milestones, open 
 - `scripts/test-integration.sh herdr_live`: against a throwaway headless herdr session
 - `scripts/test-integration.sh hardware`: against the M18 (stop the service first)
 - `scripts/run-console.sh`: print live agent states (no device)
-- `scripts/build-macos-plugin.sh`, `scripts/install-macos-plugin.sh`: build and install the macOS plugin
+- `scripts/build-vsd-plugin.sh`, `scripts/install-vsd-plugin.sh`: build and install the VSD Craft plugin
+- `scripts/build-elgato-plugin.sh`, `scripts/install-elgato-plugin.sh`: same for the Elgato Stream Deck app
 - `scripts/render-preview.sh`: all key faces → `build/preview/sheet.png` (look at it after rendering changes)
 - `scripts/install-linux.sh [--udev|--uninstall]`, `journalctl --user -u herdr-dock -f`
 
@@ -105,12 +112,14 @@ option), `DESIGN.md` (architecture, decisions, verified facts, milestones, open 
 - macOS 26, Apple silicon, Python 3.14 (`scripts/setup.sh`; pip points at the Axon Nexus mirror:
   VPN on first). StreamDock app = VSD Craft 3.10 (`~/Library/Application Support/HotSpot/StreamDock`),
   herdr 0.9.0 at `~/.config/herdr/herdr.sock`, WezTerm, AeroSpace.
-- Plugin loop: `scripts/check.sh`, `scripts/build-macos-plugin.sh`, `scripts/install-macos-plugin.sh`,
+- Plugin loop: `scripts/check.sh`, `scripts/build-vsd-plugin.sh`, `scripts/install-vsd-plugin.sh`,
   then `pkill -f herdr-dock-plugin` (the app relaunches it); log `~/Library/Logs/herdr-dock/plugin.log`.
   Gate the build on `check.sh`'s exit code, not on `| tail`.
 - The app numbers the M18's rows from the bottom (`row 2` is the top row). Agents fill keys from key 2.
 
 ## Platform split
 
-Linux work happens on Linux (`linux/`). The macOS StreamDock app plugin (`macos/`, milestone 5)
-is built and tested on a Mac. Its open items are listed in DESIGN.md.
+Linux work happens on Linux (`linux/`). The plugins (`vsd/` for VSD Craft, `elgato/` for the Elgato
+app, and the shared `streamdock_plugin/`) are built and tested on a Mac. Open items are in DESIGN.md.
+Naming: `vsd` and `elgato` name an app; "macOS" and "linux" only name the operating system (the
+`[raise] macos` setting, `macos_raiser`, `require_os macos`).

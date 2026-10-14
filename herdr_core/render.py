@@ -126,10 +126,21 @@ class KeyRenderer:
     TEXT_FONT = "DejaVuSansCondensed-Bold.ttf"
 
     def __init__(
-        self, palette: Palette | None = None, size: int = 64, cache_size: int = 512
+        self,
+        palette: Palette | None = None,
+        size: int = 64,
+        cache_size: int = 512,
+        corner_radius: float = 0.0,
     ) -> None:
+        """`corner_radius` is a fraction of the key size (0 = square, 0.5 = a circle).
+
+        Rounded keys come out as RGBA with transparent corners, for apps that draw rounded keys.
+        """
         if size < 32:
             raise ValueError("key images must be at least 32 px")
+        if not 0.0 <= corner_radius <= 0.5:
+            raise ValueError(f"corner_radius must be between 0 and 0.5, got {corner_radius}")
+        self._radius = round(size * corner_radius)
         self._palette = palette or Palette()
         self._size = size
         self._scale = size / 64
@@ -162,6 +173,22 @@ class KeyRenderer:
         return png
 
     def render_image(self, face: Face, effect: Effect = Effect.NONE, frame: int = 0) -> Image.Image:
+        image = self._face_image(face, effect, frame)
+        return self._rounded(image) if self._radius else image
+
+    def _rounded(self, image: Image.Image) -> Image.Image:
+        """Cut the corners away (transparent), with a supersampled mask so edges are smooth."""
+        factor = 4
+        big = self._size * factor
+        mask = Image.new("L", (big, big), 0)
+        ImageDraw.Draw(mask).rounded_rectangle(
+            (0, 0, big - 1, big - 1), radius=self._radius * factor, fill=255
+        )
+        rounded = image.convert("RGBA")
+        rounded.putalpha(mask.resize((self._size, self._size), Image.Resampling.LANCZOS))
+        return rounded
+
+    def _face_image(self, face: Face, effect: Effect, frame: int) -> Image.Image:
         if isinstance(face, AgentFace):
             return self._agent(face, effect, frame)
         if isinstance(face, PagerFace):
@@ -470,4 +497,8 @@ class KeyRenderer:
 
     def _border(self, draw: ImageDraw.ImageDraw, color: RGB) -> None:
         width = self._px(2)
-        draw.rectangle((0, 0, self._size - 1, self._size - 1), outline=color, width=width)
+        box = (0, 0, self._size - 1, self._size - 1)
+        if self._radius:
+            draw.rounded_rectangle(box, radius=self._radius, outline=color, width=width)
+        else:
+            draw.rectangle(box, outline=color, width=width)

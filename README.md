@@ -5,14 +5,16 @@ an agent's status with herdr's own symbols (`×` blocked, `◐` working, `✓` d
 agents blink. Press a key to switch herdr to that agent and bring its terminal window to the front.
 
 - **Linux:** a standalone daemon that drives the M18 directly through the StreamDock Device SDK
-- **macOS:** a plugin for the official StreamDock app (VSD Craft)
+- **VSD Craft (macOS):** a plugin for the official StreamDock app
+- **Elgato (macOS):** a plugin for the Elgato Stream Deck app, which also reaches Stream Deck Mobile
 
-Both use the same `herdr_core` package. See [DESIGN.md](DESIGN.md) for the architecture,
+All three use the same `herdr_core` package, and the two plugins share `streamdock_plugin/`. See [DESIGN.md](DESIGN.md) for the architecture,
 engineering rules (SOLID, ≥ 80 % test coverage) and milestones, and [CHANGELOG.md](CHANGELOG.md)
 for what was built and what was learned about herdr and the M18 along the way.
 
-**Status:** both platforms work on the M18. Linux: the daemon runs as a systemd user service
-(milestones 1-4). macOS: the plugin for the StreamDock app is verified on the dock (milestone 5).
+**Status:** all three work. Linux: the daemon runs as a systemd user service (milestones 1-4),
+verified on the M18. VSD Craft: the plugin is verified on the M18 (milestone 5). Elgato: the plugin
+is verified with Stream Deck Mobile.
 
 ## How it works on the dock
 
@@ -266,7 +268,7 @@ systemctl --user restart herdr-dock
 | Weather key shows `--` | No network, or the coordinates are wrong. The log says `weather update failed …` once. It retries every minute |
 | Service doesn't start at login | `systemctl --user status herdr-dock`. It needs `graphical-session.target`, which uwsm and most Wayland session managers provide |
 
-## Setup on macOS
+## Setup with the VSD Craft app (macOS)
 
 A plugin for the official StreamDock app (VSD Craft 3.10 was used). The app owns the home page and
 folders, so the plugin only draws the agent keys: you create one folder and put the **Herdr Agent**
@@ -276,8 +278,8 @@ action on its keys. Tested on macOS 26 (Apple silicon), herdr 0.9.0 and a VSDins
 git clone https://github.com/gedovkl/herdr-dock.git ~/Projects/herdr-dock
 cd ~/Projects/herdr-dock
 scripts/setup.sh                    # Python venv, dependencies, PyInstaller
-scripts/build-macos-plugin.sh       # builds dist/com.herdr.dock.sdPlugin (about 15 MB, self-contained)
-scripts/install-macos-plugin.sh     # copies it into the app's plugin folder
+scripts/build-vsd-plugin.sh       # builds dist/com.herdr.dock.sdPlugin (about 15 MB, self-contained)
+scripts/install-vsd-plugin.sh     # copies it into the app's plugin folder
 ```
 
 Then **quit VSD Craft completely (Cmd+Q) and reopen it** (new plugins are only found at startup).
@@ -298,7 +300,7 @@ follow the app to its workspace.
 ### Configure
 
 The plugin reads the same file as the Linux daemon, `~/.config/herdr-dock/config.toml` (see
-[`config.example.toml`](config.example.toml)). Only the shared settings apply on macOS: `herdr_socket`,
+[`config.example.toml`](config.example.toml)). Only the shared settings apply in the plugins: `herdr_socket`,
 `herdr_bin` (where the herdr binary is, if it isn't found automatically), `label`, `resync_seconds`,
 animation, `[colors]` and `[raise] macos`. `[raise] macos` is `"herdr-window"` by default (bring forward
 the terminal app that hosts herdr); any other value is a shell command, and `enabled = false` turns
@@ -326,6 +328,59 @@ several terminals the one with the lowest process id is used; a herdr binary und
 isn't recognised as a client (set `[raise] macos` to your own command then); the Exit key with status dots
 isn't available because the app's own back key owns key 1, and the home-page "Herdr" button is the app's
 folder key, not a plugin key (a plugin can't switch pages: see DESIGN.md).
+
+## Setup with the Elgato Stream Deck app (macOS)
+
+A plugin for the Elgato Stream Deck desktop app. It also drives **Stream Deck Mobile**: the phone
+shows up in the desktop app as a virtual dock, and the plugin runs on the Mac. It shares all its
+logic with the VSD plugin; only the key numbering differs. **Status: verified in the Elgato app with
+Stream Deck Mobile** (agents draw, a press focuses the agent).
+
+```bash
+scripts/setup.sh                    # once: Python venv, dependencies, PyInstaller
+scripts/build-elgato-plugin.sh      # builds dist/elgato/com.herdr.dock.sdPlugin
+scripts/install-elgato-plugin.sh    # copies it into ~/Library/Application Support/com.elgato.StreamDeck/Plugins
+```
+
+Then **quit the Stream Deck app completely (Cmd+Q) and reopen it**. In the actions list, category
+**herdr**, drag **Herdr Agent** onto the keys of a **folder**. The app keeps the folder's back key at
+the top-left of its 5×3 grid (key 1), so the plugin reserves it and agents fill the other 14 keys in
+reading order; with more than 14 agents the last key becomes the pager. Keys are drawn with rounded
+corners to match the app.
+
+The dock size comes from `[elgato]` in `~/.config/herdr-dock/config.toml` (shared with the other
+front ends), else from the first device the app lists at launch, else 5×3:
+
+```toml
+[elgato]
+columns = 5          # set columns and rows together (default: from the app, else 5x3)
+rows = 3
+key_size = 144       # pixels per key image
+corner_radius = 0.15 # fraction of the key size; 0 = square keys
+portrait = false     # true for Stream Deck Mobile held upright (see below)
+mirror = false       # true if the display shows each row right to left
+folder = true        # false if the keys are not in a folder (no back key reserved)
+```
+
+The app always reports the dock as landscape 5×3, but **Stream Deck Mobile held upright shows it turned
+90° clockwise** (3 columns × 5 rows, the folder's back key at the top-right). With `portrait = true`
+agents fill the phone left to right, top to bottom, skipping the back key. Leave it `false` for a
+phone held sideways or a real deck. If the phone shows the rows **right to left** (the back key
+at the top-right while sideways), set `mirror = true`: keys are numbered in the order they are
+shown, and it combines with `portrait`. Check the result by looking at where the first agent
+appears; if it's wrong, flip these two settings.
+
+**`portrait` and `mirror` reload by themselves**: the plugin watches `config.toml` (about once a
+second) and renumbers the keys already on the phone, so after rotating the phone you edit one line,
+save, and the agents redraw on their new keys. The log says `reloaded … keys renumbered`. The other
+`[elgato]` settings (`columns`, `rows`, `key_size`, `corner_radius`, `folder`) are read at start:
+changing them logs `restart the Stream Deck app to apply: …`. A half-edited or invalid file is
+ignored with a warning and the current layout stays.
+
+A dock of another size than the one the plugin is serving is ignored (the log says so once). Raising,
+the herdr lookup and all other settings are the same as for VSD (see above). Logs:
+`tail -f ~/Library/Logs/herdr-dock/elgato-plugin.log`; `pkill -f herdr-dock-plugin` restarts the plugin
+(this also stops the VSD plugin if it is running).
 
 ## Development
 
@@ -355,6 +410,8 @@ Run from anywhere; they resolve the repo root themselves. Works with macOS's bas
 | `scripts/render-preview.sh [dir]` | Render all key states/frames to PNGs for review |
 | `scripts/run-linux.sh [-v]` | Run the Linux daemon in the foreground |
 | `scripts/install-linux.sh [--udev\|--uninstall]` | Install + start the systemd `--user` service. `--udev`: install the M18 udev rule (sudo). `--uninstall`: remove the service |
-| `scripts/build-macos-plugin.sh` | Build `dist/com.herdr.dock.sdPlugin` with PyInstaller (macOS) |
-| `scripts/install-macos-plugin.sh` | Copy the plugin into the StreamDock app's plugin folder (`STREAMDOCK_PLUGINS_DIR` overrides it), then restart the app |
+| `scripts/build-vsd-plugin.sh` | Build the VSD Craft plugin, `dist/com.herdr.dock.sdPlugin`, with PyInstaller (macOS) |
+| `scripts/install-vsd-plugin.sh` | Copy the plugin into the StreamDock app's plugin folder (`STREAMDOCK_PLUGINS_DIR` overrides it), then restart the app |
+| `scripts/build-elgato-plugin.sh` | Build the Elgato plugin, `dist/elgato/com.herdr.dock.sdPlugin`, with PyInstaller (macOS) |
+| `scripts/install-elgato-plugin.sh` | Copy it into the Elgato Stream Deck app's plugin folder (`ELGATO_PLUGINS_DIR` overrides it), then restart the app |
 

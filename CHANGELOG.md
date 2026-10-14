@@ -3,6 +3,87 @@
 What was built, in order, and what was learned along the way. Architecture and rationale live in
 [DESIGN.md](DESIGN.md); setup is in [README.md](README.md).
 
+## Elgato: the layout reloads when the config changes
+
+The phone's orientation follows how it is held and the plugin can't see it, so `portrait` and
+`mirror` now apply live. `FileWatcher` polls `config.toml` (~1 s); `HerdrPlugin.set_grid` renumbers
+the keys on screen (remembered from `willAppear`, which the app never repeats) and redraws.
+`columns`, `rows`, `key_size`, `corner_radius` and `folder` still need an app restart (the log
+says so). An invalid or half-written file keeps the current layout. `check.sh` passes (550 tests).
+
+## Elgato: `mirror` for a display that runs right to left
+
+The phone later showed the dock sideways with each row right to left, while the app's coordinates
+stayed 5×3 landscape. `[elgato] mirror = true` numbers keys in the order shown (the back key stays
+first, then agents fill from the left). It combines with `portrait`. The author's config on this Mac
+has `mirror = true`. If the phone is really turned 180° (back key at the bottom-right), this will
+not match and a `rotate` setting would be needed.
+
+## Naming: scripts and extras follow the app, not the OS
+
+- `scripts/build-macos-plugin.sh` and `install-macos-plugin.sh` are now `build-vsd-plugin.sh` and
+  `install-vsd-plugin.sh` (the Elgato ones are `build-elgato-plugin.sh` / `install-elgato-plugin.sh`).
+  Older entries below still use the old names.
+- The `macos` extra in `pyproject.toml` is now `plugins` (`scripts/setup.sh` installs it on macOS).
+- Docs reworded so `vsd` and `elgato` name an app and "macOS"/"Linux" only name the OS. These
+  stay, because they really are about the OS: `[raise] macos` (a window-raise command per OS, like
+  `[raise] linux`, and renaming it would break configs), `macos_raiser`, `require_os macos`.
+- Linux untouched: `linux/` and `herdr_core/` import none of the plugin packages.
+
+## Elgato: rounded keys, folder back key, phone orientation
+
+Feedback from the first run on Stream Deck Mobile; `check.sh` passes (531 tests).
+
+- **Rounded keys**: the app draws rounded keys. `KeyRenderer(corner_radius=…)` rounds every face
+  (RGBA, transparent corners, smooth edges) and the focus border follows the outline. `[elgato]
+  corner_radius`, default 0.15; VSD and Linux stay square.
+- **Folder back key**: the folder's back key (app `(0, 0)`) is reserved again (`KeyLayout(exit_key=True)`,
+  `[elgato] folder = true`). The first version had no reserved key, so the first agent was hidden
+  behind the back key.
+- **Phone orientation**: held upright the phone shows the app's 5×3 grid turned 90° clockwise (3×5,
+  back key at the top-right). `[elgato] portrait = true` numbers keys in the order the phone
+  shows them. The direction is inferred from the back key's corner; the other cells are unverified.
+- Learned from `-info`: the phone is `Stream Deck Mobile`, type 3, 5×3, pixel ratio 2, and the plugin
+  takes its size from there.
+- `pkill -f herdr-dock-plugin` restarts both the VSD and the Elgato plugin.
+
+## Elgato Stream Deck plugin (verified with Stream Deck Mobile)
+
+A second front end, `elgato/`, for the Elgato Stream Deck app (also reaches Stream Deck Mobile,
+which the author uses, having no Stream Deck hardware). `check.sh` passes (509 tests).
+Verified by the author on the phone: the app launches the unsigned binary, keys 2-15 appear at
+top-down coordinates on a 5×3 layout, images draw, and a press reaches the session
+(`elgato-plugin.log`).
+
+- `elgato/`: `ElgatoGrid` (top-down coordinates, any size), `[elgato]` config (`columns`, `rows`,
+  `key_size`), `-info` device parsing, `plugin_main.py`, manifest (SDKVersion 3, native `CodePath`),
+  PyInstaller spec and generated 1x/@2x icons (`tools/make_plugin_icons.py`).
+- No Exit key on Elgato (`KeyLayout(exit_key=False)`): every key can show an agent.
+- Shared layer changes: `PluginArgs` keeps the app's `-info` string, and `runner.main` takes a spec
+  factory (called after logging is up) plus a log file name instead of a ready spec.
+- Scripts: `build-elgato-plugin.sh` (→ `dist/elgato/`) and `install-elgato-plugin.sh`.
+- Still unchecked: the 6- and 32-key Mobile layouts and whether the size came from `-info`. See
+  DESIGN.md "Elgato front end".
+
+## Shared plugin layer: `macos/` is now `vsd/`
+
+Preparing a second plugin, for the Elgato Stream Deck app (which also runs on macOS). No
+behaviour change; `check.sh` passes (475 tests) and the PyInstaller build still produces a working
+binary.
+
+- `macos/` became `vsd/` (the VSD Craft front end). The code that only speaks the StreamDock-style
+  plugin protocol moved to `streamdock_plugin/`: protocol, websocket, surface, lifecycle,
+  `HerdrPlugin`, the entry point (`runner.py`), `herdr_path.py` and `raiser.py` (those two are about
+  macOS, not VSD, so Elgato on a Mac reuses them).
+- New `Grid` protocol (`streamdock_plugin/grid.py`) holds what differs between apps: which docks
+  are accepted and how (column, row) maps to a key index. `vsd/grid.py` has the M18 rules (5×3,
+  rows from the bottom). `PluginSpec` bundles action UUID, grid, key count and size, layout.
+- The "key 1 is the app's folder back key" warning now says "reserved for Exit" (it is the layout
+  that reserves it). The device warning is prefixed `device <id>:`.
+- Elgato's plugin protocol matches VSD's (same launch arguments, `register` message, `willAppear`,
+  `keyUp`, `deviceDidConnect`, `setImage`; `CodePath` may be a native executable). Not yet
+  built or tried against the real Elgato app (the author tests with Stream Deck Mobile).
+
 ## Linux check after the macOS work
 
 Re-checked Linux after the macOS plugin landed. `scripts/check.sh` had stopped passing on Linux:
@@ -80,8 +161,8 @@ checked and found harmless, 3 were rejected or documented:
 
 - `macos/com.herdr.dock.sdPlugin/manifest.json` (one action, `com.herdr.dock.agent`), the icon
   (`tools/make_plugin_icons.py`, drawn by the same `KeyRenderer` as the keys) and
-  `macos/plugin.spec`. `scripts/build-macos-plugin.sh` builds a 15 MB self-contained binary (the
-  script now creates `dist/`); `scripts/install-macos-plugin.sh` installs it.
+  `macos/plugin.spec`. `scripts/build-vsd-plugin.sh` builds a 15 MB self-contained binary (the
+  script now creates `dist/`); `scripts/install-vsd-plugin.sh` installs it.
 - Smoke-tested the frozen binary against a fake StreamDock app: it registers, draws a key
   (fonts bundled) and exits when the app hangs up.
 - **Found by that test:** herdr reports a temp-dir socket when `$HOME` is missing, so the plugin

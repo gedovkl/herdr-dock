@@ -58,9 +58,12 @@ def build_herdr_stack(
     layout: KeyLayout,
     key_count: int,
     key_size: int = 64,
+    corner_radius: float = 0.0,
 ) -> HerdrStack:
     """Wire renderer → presenter → surface and a session that feeds the presenter."""
-    renderer = KeyRenderer(Palette().with_status_colors(config.colors), size=key_size)
+    renderer = KeyRenderer(
+        Palette().with_status_colors(config.colors), size=key_size, corner_radius=corner_radius
+    )
     presenter = DeckPresenter(
         surface, renderer, Animator(config.animation), layout=layout, label=config.label
     )

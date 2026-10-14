@@ -275,3 +275,42 @@ def test_pomodoro_and_timer_faces(renderer: KeyRenderer) -> None:
     assert hex_to_rgb(TIMER_RUNNING_COLOR) in running
     assert hex_to_rgb(POMODORO_WORK_COLOR) in running  # the pulsing dot
     assert hex_to_rgb(POMODORO_WORK_COLOR) not in colours(TimerFace("12:08", pulse=False))
+
+
+def alpha(png: bytes, xy: tuple[int, int]) -> int:
+    return Image.open(io.BytesIO(png)).convert("RGBA").getpixel(xy)[3]  # type: ignore[no-any-return,index]
+
+
+def test_square_keys_are_opaque_rgb_by_default(renderer: KeyRenderer) -> None:
+    image = Image.open(io.BytesIO(renderer.render(AgentFace("claude", "x", S.IDLE))))
+    assert image.mode == "RGB"
+
+
+def test_rounded_keys_have_transparent_corners_and_a_solid_middle() -> None:
+    rounded = KeyRenderer(size=144, corner_radius=0.2)
+    png = rounded.render(AgentFace("claude", "x", S.IDLE))
+    assert alpha(png, (0, 0)) == 0 and alpha(png, (143, 143)) == 0
+    assert alpha(png, (72, 0)) == 255 and alpha(png, (0, 72)) == 255  # edge midpoints stay
+    assert alpha(png, (72, 72)) == 255
+
+
+def test_the_focus_border_follows_the_rounded_outline() -> None:
+    rounded = KeyRenderer(size=144, corner_radius=0.2)
+    png = rounded.render(AgentFace("claude", "x", S.IDLE, focused=True))
+    image = Image.open(io.BytesIO(png)).convert("RGBA")
+    assert image.getpixel((72, 0)) == (255, 255, 255, 255)  # border on the straight edge
+    # A rounded outline leaves the square corner empty and runs a diagonal through it.
+    assert image.getpixel((0, 0))[3] == 0
+    assert image.getpixel((144 - 30, 144 - 30))[:3] != (255, 255, 255)
+
+
+def test_every_face_renders_rounded() -> None:
+    rounded = KeyRenderer(size=72, corner_radius=0.15)
+    for face in (EmptyFace(), OfflineFace(), ExitFace((S.IDLE,), True), PagerFace(0, 2, ())):
+        assert alpha(rounded.render(face), (0, 0)) == 0
+
+
+@pytest.mark.parametrize("radius", [-0.1, 0.51])
+def test_the_corner_radius_must_be_sensible(radius: float) -> None:
+    with pytest.raises(ValueError, match="corner_radius"):
+        KeyRenderer(corner_radius=radius)

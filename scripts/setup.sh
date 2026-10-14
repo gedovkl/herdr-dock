@@ -10,7 +10,7 @@ fi
 
 case "$(os_name)" in
     linux) extras="dev,linux" ;;
-    macos) extras="dev,macos" ;;
+    macos) extras="dev,plugins" ;;
     *) die "unsupported OS: $(uname -s)" ;;
 esac
 
