@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8" /><link rel="stylesheet" href="pi.css" /></head>
+<body>
+  <div class="row"><label for="place">Place name</label><input id="place" type="text" placeholder="from config" data-setting="place" /></div>
+  <div class="row"><label for="latitude">Latitude</label><input id="latitude" type="number" step="any" placeholder="from config" data-setting="latitude" /></div>
+  <div class="row"><label for="longitude">Longitude</label><input id="longitude" type="number" step="any" placeholder="from config" data-setting="longitude" /></div>
+  <div class="row"><label for="units">Units</label><select id="units" data-setting="units"><option value="">from config</option><option value="celsius">°C</option><option value="fahrenheit">°F</option></select></div>
+  <div class="hint">Empty fields use the weather key in herdr-dock&apos;s config.toml. Data: Open-Meteo, every 15 minutes.</div>
+<script src="pi.js"></script>
+</body>
+</html>

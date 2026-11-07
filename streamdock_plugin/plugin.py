@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Protocol
+from collections.abc import Coroutine, Mapping
+from typing import Any, Protocol
 
 from herdr_core.faces import KeyLayout
 from streamdock_plugin.grid import Grid
@@ -30,6 +31,18 @@ class Pressable(Protocol):
     async def press(self, key_index: int) -> None: ...
 
 
+class WidgetRouter(Protocol):
+    """The widget keys (clock, weather, ...): their own actions, drawn by context."""
+
+    def handles(self, action: str) -> bool: ...
+
+    def appeared(self, context: str, action: str, settings: Mapping[str, Any]) -> None: ...
+
+    def disappeared(self, context: str) -> None: ...
+
+    async def pressed(self, context: str, action: str, settings: Mapping[str, Any]) -> None: ...
+
+
 class HerdrPlugin:
     """Turns app events into surface updates, lifecycle changes and session presses."""
 
@@ -44,6 +57,7 @@ class HerdrPlugin:
         action_uuid: str,
         *,
         key_count: int | None = None,
+        widgets: WidgetRouter | None = None,
     ) -> None:
         self._surface = surface
         self._lifecycle = lifecycle
@@ -53,6 +67,7 @@ class HerdrPlugin:
         self._grid = grid
         self._action_uuid = action_uuid
         self._key_count = key_count
+        self._widgets = widgets
         self._sizes: dict[str, tuple[int, int]] = {}
         self._device: str | None = None
         self._tasks: set[asyncio.Task[None]] = set()
@@ -70,8 +85,13 @@ class HerdrPlugin:
             if event.device == self._device:
                 self._device = None
         elif isinstance(event, Appeared):
-            self._appeared(event)
+            if self._widgets is not None and self._widgets.handles(event.action):
+                self._widgets.appeared(event.context, event.action, event.settings)
+            else:
+                self._appeared(event)
         elif isinstance(event, Disappeared):
+            if self._widgets is not None:
+                self._widgets.disappeared(event.context)
             key = self._surface.key_of(event.context)
             if key is not None:
                 log.info("key %s disappeared", key + 1)
@@ -79,7 +99,10 @@ class HerdrPlugin:
             self._lifecycle.disappeared(event.context)
             self._visible.pop(event.context, None)
         elif isinstance(event, KeyReleased):
-            self._released(event)
+            if self._widgets is not None and self._widgets.handles(event.action):
+                self._spawn(self._widget_press(self._widgets, event), "widget-press")
+            else:
+                self._released(event)
 
     def set_grid(self, grid: Grid) -> None:
         """Number the keys with a different grid, including the keys already on screen."""
@@ -112,9 +135,18 @@ class HerdrPlugin:
         if key is None:
             return
         log.info("key %s pressed", key + 1)
-        task = asyncio.create_task(self._press(self._layout.session_index(key)), name="press")
+        self._spawn(self._press(self._layout.session_index(key)), "press")
+
+    def _spawn(self, work: Coroutine[Any, Any, None], name: str) -> None:
+        task = asyncio.create_task(work, name=name)
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
+
+    async def _widget_press(self, widgets: WidgetRouter, event: KeyReleased) -> None:
+        try:
+            await widgets.pressed(event.context, event.action, event.settings)
+        except Exception:
+            log.exception("press on a widget key failed")
 
     async def _press(self, index: int) -> None:
         try:

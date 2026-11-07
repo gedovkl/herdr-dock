@@ -419,6 +419,25 @@ Raising uses the same Hyprland lookup as the Linux daemon (`[raise] linux`). Log
 pulling changes to the manifest or `pi/`; Python changes only need an OpenDeck restart.
 `scripts/install-opendeck-plugin.sh --uninstall` removes it.
 
+**Widget keys.** The herdr category also has **Clock**, **Weather**, **Pomodoro**, **Timer** and
+**App**, the M18 home keys as OpenDeck actions. They can sit on any key (position and agent
+numbers don't matter to them); click one to set it up:
+
+| Action | Settings | Press |
+|--------|----------|-------|
+| Clock | 12-hour clock | nothing |
+| Weather | place, latitude, longitude, units (empty: the weather key in `[[home]]`) | nothing |
+| Pomodoro | work and break minutes, notify on switch | start / stop (a new value resets it) |
+| Timer | none | start / stop |
+| App | label, symbol, window class regex, command | focus a matching window, else run the command |
+
+A hidden pomodoro keeps running and still notifies (`notify-send`; `osascript` on macOS). On macOS
+the App key only runs its command: focusing windows uses Hyprland.
+
+Measured cost (OpenDeck 2.14.1, 15 s, PSS): about 8–9 % of one core and 270 MB for OpenDeck,
+its WebKit view (which stays alive when the window is closed), Tacto Connect and the plugins. Our
+plugin is about 1.5 % and 17 MB of that.
+
 Known with Tacto: the phone offers only relay ICE candidates, so presses travel through
 Cloudflare's TURN servers even on the same Wi-Fi (a `ufw` rule for local UDP didn't change that).
 

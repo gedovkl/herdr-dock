@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8" /><link rel="stylesheet" href="pi.css" /></head>
+<body>
+  <div class="row"><label for="label">Label</label><input id="label" type="text" placeholder="Zed" data-setting="label" /></div>
+  <div class="row"><label for="symbol">Symbol</label><input id="symbol" type="text" placeholder="Z" data-setting="symbol" /></div>
+  <div class="row"><label for="focus">Window class</label><input id="focus" type="text" placeholder="^dev\.zed\.Zed$" data-setting="focus" /></div>
+  <div class="row"><label for="command">Command</label><input id="command" type="text" placeholder="uwsm-app -- zeditor" data-setting="command" /></div>
+  <div class="hint">Press: focus a window whose class matches (regex, <code>hyprctl clients</code>), otherwise run the command.</div>
+<script src="pi.js"></script>
+</body>
+</html>

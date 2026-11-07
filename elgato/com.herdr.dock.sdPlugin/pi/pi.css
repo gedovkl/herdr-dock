@@ -1,0 +1,8 @@
+body { margin: 0; padding: 8px 12px; font: 13px ui-sans-serif, system-ui, sans-serif;
+       color: #d8d8d8; background: transparent; }
+.row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+label { min-width: 110px; }
+input[type="text"], input[type="number"], select { width: 160px; padding: 3px 6px; color: inherit;
+       background: #3d3d3d; border: 1px solid #555; border-radius: 3px; }
+input[type="number"] { width: 72px; }
+.hint { color: #9a9a9a; font-size: 12px; line-height: 1.4; margin-top: 4px; }

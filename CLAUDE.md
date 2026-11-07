@@ -20,7 +20,8 @@ option), `DESIGN.md` (architecture, decisions, verified facts, milestones, open 
   see DESIGN.md.
 - **OpenDeck (Linux): the Elgato plugin runs there**, from `.venv` via
   `scripts/install-opendeck-plugin.sh`, with a Tacto phone deck (3×2, `[elgato] columns = 3`,
-  `rows = 2`, `folder = false`). Per-key **Agent number** setting (`pi/agent.html`), so far only
+  `rows = 2`, `folder = false`). Per-key **Agent number** setting (`pi/agent.html`) and widget
+  actions (clock, weather, pomodoro, timer, app; `streamdock_plugin/widget_keys.py`), so far only
   enabled in the OpenDeck install.
 - **Not verified on hardware yet:** dock off across a real suspend/resume (unit-tested).
 - **VSD Craft plugin (`vsd/`, milestone 5): done and verified on the M18** (VSD Craft 3.10, macOS 26, herdr

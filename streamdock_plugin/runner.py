@@ -14,7 +14,7 @@ from typing import Any
 
 import websocket
 
-from herdr_core.config import Config, ConfigError, load_config
+from herdr_core.config import Config, ConfigError, default_config_path, load_config
 from herdr_core.faces import KeyLayout
 from herdr_core.socket_path import resolve_socket_path
 from herdr_core.wiring import build_herdr_stack, configure_logging, start_herdr, stop_herdr
@@ -26,6 +26,13 @@ from streamdock_plugin.raiser import plugin_raiser
 from streamdock_plugin.surface import StreamDockSurface
 from streamdock_plugin.watch import FileWatcher
 from streamdock_plugin.websocket import WebSocketTransport
+from streamdock_plugin.widget_keys import (
+    WidgetBuilder,
+    WidgetKeys,
+    platform_apps,
+    plugin_notify,
+    weather_defaults,
+)
 
 log = logging.getLogger("herdr_dock.plugin")
 
@@ -105,6 +112,18 @@ async def run_plugin(
         key_size=spec.key_size,
         corner_radius=spec.corner_radius,
     )
+    run_command, focus = platform_apps()
+    widgets = WidgetKeys(
+        spec.action_uuid.rsplit(".", 1)[0] + ".",  # com.herdr.dock.agent -> com.herdr.dock.clock
+        transport.send,
+        stack.renderer.render,
+        WidgetBuilder(
+            weather=weather_defaults(default_config_path(os.environ, Path.home())),
+            notify=plugin_notify(),
+        ),
+        run=run_command,
+        focus=focus,
+    )
     lifecycle = VisibilityLifecycle(
         lambda: start_herdr(stack.presenter, stack.session),
         lambda: stop_herdr(stack.presenter, stack.session),
@@ -118,16 +137,22 @@ async def run_plugin(
         spec.grid,
         spec.action_uuid,
         key_count=spec.key_count,
+        widgets=widgets,
     )
     holder.append(plugin)
     transport.start()
     watcher = _watch_grid(spec.reload, plugin)
+    ticking = asyncio.create_task(widgets.run(), name="widget-tick")
     try:
         await closed.wait()
     finally:
         if watcher is not None:
             watcher.cancel()
-            await asyncio.gather(watcher, return_exceptions=True)
+        ticking.cancel()
+        await asyncio.gather(
+            *(task for task in (watcher, ticking) if task is not None), return_exceptions=True
+        )
+        await widgets.close()
         await plugin.close()
         transport.close()
 

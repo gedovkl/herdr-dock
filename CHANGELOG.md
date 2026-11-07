@@ -3,6 +3,20 @@
 What was built, in order, and what was learned along the way. Architecture and rationale live in
 [DESIGN.md](DESIGN.md); setup is in [README.md](README.md).
 
+## OpenDeck: clock, weather, pomodoro, timer and app keys
+
+The M18 home keys are now OpenDeck actions in the herdr category, each with a settings page, and
+verified on the Tacto phone deck. `WidgetKeys` (`streamdock_plugin/widget_keys.py`) draws them per
+key context with the daemon's widget classes; `HerdrPlugin` routes widget actions there and agent
+keys stay as they were. Key events now carry the key's full `settings`. Action icons are rendered
+from the real faces at install (`python -m streamdock_plugin.icons`). Only the OpenDeck manifest
+gets the new actions until they are tried in the Mac apps.
+
+- Learned: OpenDeck and its WebKit view cost about 8–9 % of one core and 270 MB, and closing the
+  window doesn't help (the view stays alive in the tray). Our plugin is ~1.5 % and 17 MB. This is
+  the reason for a dedicated phone app talking to the daemon over the local network.
+- `check.sh` passes (582 tests).
+
 ## OpenDeck on Linux, and a per-key agent number
 
 The Elgato plugin now runs in [OpenDeck](https://github.com/nekename/OpenDeck) on Linux, with an

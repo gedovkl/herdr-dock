@@ -623,6 +623,20 @@ Verified: the app launches the unsigned PyInstaller binary, keys appear with top
   OpenDeck install sets `PropertyInspectorPath` so far; enable it in the Mac manifests after
   trying it in the Elgato app.
 
+- **Widget keys** (`streamdock_plugin/widget_keys.py`): `com.herdr.dock.{clock,weather,pomodoro,
+  timer,app}` are separate actions. `HerdrPlugin` hands their `willAppear`/`didReceiveSettings`/
+  `willDisappear`/`keyUp` to `WidgetKeys` (a `WidgetRouter`), which keeps one widget per context,
+  built by `WidgetBuilder` from the key's settings with the Linux daemon's widget classes
+  (`linux/widgets.py` uses only the standard library and `herdr_core`). The widget is rebuilt only
+  when the settings change (canonical JSON), so re-appearing keeps a running pomodoro. A one-second
+  tick advances every widget and sends `setImage` only for visible keys whose face changed; each
+  weather key refreshes in its own task (15 min, 60 s after a failure). Weather without a location
+  falls back to the first `[[home]]` weather key, else shows "set location". App keys focus via
+  `WindowFocuser` on Linux, else run the command (`ShellLauncher.run`). Settings pages share
+  `pi/pi.js` (fields with `data-setting`); `streamdock_plugin/icons.py` renders the action icons
+  from the real faces at install. Like the agent number, these actions are only added in the
+  OpenDeck install's manifest so far.
+
 ## Project layout
 
 | Path | Purpose |

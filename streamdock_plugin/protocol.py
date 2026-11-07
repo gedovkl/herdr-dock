@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import base64
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -23,6 +23,8 @@ class Appeared:
     row: int
     agent: int | None = None
     """The key's `agent` setting: always show agent number N (1-based). None: by position."""
+    settings: dict[str, Any] = field(default_factory=dict, compare=False, hash=False)
+    """The key's settings as the app stores them (widget keys read theirs from here)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +40,7 @@ class KeyReleased:
     column: int
     row: int
     agent: int | None = None
+    settings: dict[str, Any] = field(default_factory=dict, compare=False, hash=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,10 +104,12 @@ def _key_event(event: str, data: dict[str, Any]) -> Appeared | KeyReleased | Non
     if column is None or row is None:
         return None
     action = _text(data, "action")
-    agent = _agent_setting(payload.get("settings") if isinstance(payload, dict) else None)
+    raw = payload.get("settings") if isinstance(payload, dict) else None
+    settings = dict(raw) if isinstance(raw, dict) else {}
+    agent = _agent_setting(settings)
     if event == "keyUp":
-        return KeyReleased(context, device, action, column, row, agent)
-    return Appeared(context, device, action, column, row, agent)
+        return KeyReleased(context, device, action, column, row, agent, settings)
+    return Appeared(context, device, action, column, row, agent, settings)
 
 
 def _agent_setting(settings: object) -> int | None:
