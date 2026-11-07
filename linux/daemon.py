@@ -13,16 +13,15 @@ import tempfile
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from herdr_core.config import HERDR_WINDOW, Config, ConfigError, RaiseConfig, load_config
+from herdr_core.config import Config, ConfigError, load_config
 from herdr_core.faces import KeyLayout
-from herdr_core.ports import Raiser, Sleep
-from herdr_core.raise_window import raiser_from_config
+from herdr_core.ports import Sleep
 from herdr_core.socket_path import resolve_socket_path, status_reader
 from herdr_core.wiring import build_herdr_stack, configure_logging
 from linux.config import KEY_COUNT, HomeKey, LinuxConfig, load_linux_config
 from linux.controller import DockController
 from linux.device import DeviceInput, M18Device, StreamDockSdk
-from linux.hyprland import HerdrWindowRaiser, WindowFocuser
+from linux.hyprland import HerdrWindowRaiser, WindowFocuser, linux_raiser
 from linux.launcher import ShellLauncher
 from linux.power import LockMonitor, SleepMonitor
 from linux.widgets import (
@@ -90,13 +89,6 @@ def build_widgets(home: tuple[HomeKey, ...]) -> dict[int, Widget]:
                 refresh_seconds=key.refresh_minutes * 60,
             )
     return widgets
-
-
-def linux_raiser(config: RaiseConfig) -> Raiser:
-    """`herdr-window` (or nothing configured) focuses the herdr client's window on Hyprland."""
-    if config.enabled and config.linux.strip() in ("", HERDR_WINDOW):
-        return HerdrWindowRaiser()
-    return raiser_from_config(config, platform="linux")
 
 
 class Daemon:

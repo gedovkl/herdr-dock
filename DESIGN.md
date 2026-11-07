@@ -605,6 +605,24 @@ Verified: the app launches the unsigned PyInstaller binary, keys appear with top
   Mobile layouts (6 and 32 keys), the rotation direction beyond the back-key corner, and a long run.
   Elgato's profile switching (`switchProfile`) could give a real Herdr page, which VSD can't.
 
+- **OpenDeck (Linux)**: OpenDeck speaks the same protocol and launches the plugin with the same
+  arguments (`-info` reports `"platform":"linux"`, `devices` empty at launch; devices connect
+  later). `scripts/install-opendeck-plugin.sh` builds OpenDeck's copy from `elgato/`: the manifest
+  gets `CodePathLin` and a `linux` OS entry through `jq`, and `herdr-dock-plugin` is a generated
+  shell script that runs `python -m elgato.plugin_main` from `.venv`. The checked-in manifest stays
+  as the Mac app needs it. `plugin_raiser` picks `linux_raiser` (now in `linux/hyprland.py`, so the
+  plugin doesn't import the daemon and its SDK) on Linux and `macos_raiser` on macOS. The log goes
+  to `$XDG_STATE_HOME/herdr-dock/` on Linux. Tacto's phone deck reports as a 3 × 2 device
+  (`rl-mobile-<user>`) next to an 8 × 6 virtual keyboard (`rl-keyboard`), which is ignored.
+- **Agent number** (per key): `pi/agent.html` stores `{"agent": N}` in the key's settings with
+  `setSettings`. `willAppear`, `keyUp` and `didReceiveSettings` carry `payload.settings`;
+  `didReceiveSettings` also carries the coordinates, so it is parsed as an `Appeared` and
+  re-attaches the key. `HerdrPlugin` gives such a key the index agent N is drawn on
+  (`N - 1`, `+ 1` with an exit key) instead of its position; past `key_count` it falls back to the
+  position with one warning. Two keys with the same number: the later one draws. Only the
+  OpenDeck install sets `PropertyInspectorPath` so far; enable it in the Mac manifests after
+  trying it in the Elgato app.
+
 ## Project layout
 
 | Path | Purpose |

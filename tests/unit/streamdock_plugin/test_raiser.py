@@ -9,11 +9,13 @@ import pytest
 from herdr_core.config import RaiseConfig
 from herdr_core.models import Agent, AgentStatus
 from herdr_core.raise_window import CommandRaiser, NullRaiser
+from linux.hyprland import HerdrWindowRaiser
 from streamdock_plugin.raiser import (
     TerminalRaiser,
     app_bundle,
     macos_raiser,
     parse_ps,
+    plugin_raiser,
     terminal_app,
 )
 
@@ -118,3 +120,11 @@ def test_default_is_the_terminal_raiser() -> None:
 def test_a_command_or_disabled_overrides_it() -> None:
     assert isinstance(macos_raiser(RaiseConfig(macos="open -a Ghostty")), CommandRaiser)
     assert isinstance(macos_raiser(RaiseConfig(enabled=False)), NullRaiser)
+
+
+def test_plugin_raiser_follows_the_platform() -> None:
+    """On Linux (OpenDeck) the plugin focuses the herdr window through Hyprland, like the daemon."""
+    assert isinstance(plugin_raiser(RaiseConfig(), "linux"), HerdrWindowRaiser)
+    assert isinstance(plugin_raiser(RaiseConfig(linux="wmctrl -a foot"), "linux"), CommandRaiser)
+    assert isinstance(plugin_raiser(RaiseConfig(enabled=False), "linux"), NullRaiser)
+    assert isinstance(plugin_raiser(RaiseConfig(), "darwin"), TerminalRaiser)

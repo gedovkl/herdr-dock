@@ -3,6 +3,28 @@
 What was built, in order, and what was learned along the way. Architecture and rationale live in
 [DESIGN.md](DESIGN.md); setup is in [README.md](README.md).
 
+## OpenDeck on Linux, and a per-key agent number
+
+The Elgato plugin now runs in [OpenDeck](https://github.com/nekename/OpenDeck) on Linux, with an
+Android phone (Tacto) as the deck. Verified with OpenDeck 2.14.1 and Tacto Free (3 × 2) on
+GrapheneOS: keys draw, a key set to agent 1 shows it, and a press switches herdr and raises foot.
+
+- `scripts/install-opendeck-plugin.sh`: installs `elgato/com.herdr.dock.sdPlugin` into
+  `~/.config/opendeck/plugins`, adding `CodePathLin`, a `linux` OS entry and the Property
+  Inspector with `jq`, and a launcher that runs the plugin from `.venv`. The checked-in manifest
+  (used by the Mac app) is unchanged.
+- `plugin_raiser`: on Linux the plugins raise the herdr window through Hyprland, like the daemon
+  (`linux_raiser` moved from `linux/daemon.py` to `linux/hyprland.py`). macOS is unchanged.
+- Plugin log on Linux: `$XDG_STATE_HOME/herdr-dock/` (default `~/.local/state`) instead of
+  `~/Library/Logs`.
+- **Agent number**: `pi/agent.html` sets `{"agent": N}` per key; the key then shows agent N
+  wherever it sits. Without it, keys fill by position as before. `didReceiveSettings` is handled
+  so a change applies at once.
+- Learned: OpenDeck doesn't relaunch a plugin that exits (restart OpenDeck); actions can't be
+  dropped on a key that already holds one; Tacto reports the phone as 3 × 2 plus an 8 × 6
+  keyboard device; Tacto's phone offers only TURN relay candidates, so presses go through
+  Cloudflare even on the same Wi-Fi. `check.sh` passes (560 tests).
+
 ## Elgato: the layout reloads when the config changes
 
 The phone's orientation follows how it is held and the plugin can't see it, so `portrait` and

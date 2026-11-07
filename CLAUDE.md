@@ -18,6 +18,10 @@ option), `DESIGN.md` (architecture, decisions, verified facts, milestones, open 
   (reserve the app's back key), `corner_radius`. The author has no Stream Deck hardware; the phone is
   a virtual dock in the Mac app. Shares all logic with the VSD plugin through `streamdock_plugin/`;
   see DESIGN.md.
+- **OpenDeck (Linux): the Elgato plugin runs there**, from `.venv` via
+  `scripts/install-opendeck-plugin.sh`, with a Tacto phone deck (3×2, `[elgato] columns = 3`,
+  `rows = 2`, `folder = false`). Per-key **Agent number** setting (`pi/agent.html`), so far only
+  enabled in the OpenDeck install.
 - **Not verified on hardware yet:** dock off across a real suspend/resume (unit-tested).
 - **VSD Craft plugin (`vsd/`, milestone 5): done and verified on the M18** (VSD Craft 3.10, macOS 26, herdr
   0.9.0, AeroSpace + WezTerm): agents draw, presses focus the agent, switch herdr's tab and raise the
@@ -72,6 +76,7 @@ option), `DESIGN.md` (architecture, decisions, verified facts, milestones, open 
 - `scripts/run-console.sh`: print live agent states (no device)
 - `scripts/build-vsd-plugin.sh`, `scripts/install-vsd-plugin.sh`: build and install the VSD Craft plugin
 - `scripts/build-elgato-plugin.sh`, `scripts/install-elgato-plugin.sh`: same for the Elgato Stream Deck app
+- `scripts/install-opendeck-plugin.sh [--uninstall]`: the Elgato plugin in OpenDeck on Linux (restart OpenDeck after)
 - `scripts/render-preview.sh`: all key faces → `build/preview/sheet.png` (look at it after rendering changes)
 - `scripts/install-linux.sh [--udev|--uninstall]`, `journalctl --user -u herdr-dock -f`
 

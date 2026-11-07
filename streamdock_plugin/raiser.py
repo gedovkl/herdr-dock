@@ -1,15 +1,18 @@
-"""Bring the terminal that hosts the herdr client to the front on macOS."""
+"""Bring the terminal that hosts the herdr client to the front (macOS here; Linux via Hyprland)."""
 
 from __future__ import annotations
 
 import logging
+import sys
 from collections.abc import Iterable
 from pathlib import Path
 
 from herdr_core.config import HERDR_WINDOW, RaiseConfig
 from herdr_core.models import Agent
+from herdr_core.ports import Raiser
 from herdr_core.processes import Exec, Process, ancestors, herdr_clients, run_exec
 from herdr_core.raise_window import CommandRaiser, NullRaiser, raiser_from_config
+from linux.hyprland import linux_raiser
 
 log = logging.getLogger(__name__)
 
@@ -76,3 +79,10 @@ def macos_raiser(config: RaiseConfig) -> TerminalRaiser | CommandRaiser | NullRa
     if config.enabled and config.macos.strip() in ("", HERDR_WINDOW):
         return TerminalRaiser()
     return raiser_from_config(config, platform="darwin")
+
+
+def plugin_raiser(config: RaiseConfig, platform: str = sys.platform) -> Raiser:
+    """The raiser for the OS the plugin runs on: Hyprland on Linux (OpenDeck), else macOS."""
+    if platform.startswith("linux"):
+        return linux_raiser(config)
+    return macos_raiser(config)

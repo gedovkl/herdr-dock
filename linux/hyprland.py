@@ -8,8 +8,11 @@ import re
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 
+from herdr_core.config import HERDR_WINDOW, RaiseConfig
 from herdr_core.models import Agent
+from herdr_core.ports import Raiser
 from herdr_core.processes import Exec, Process, ancestor_pids, herdr_clients, run_exec
+from herdr_core.raise_window import raiser_from_config
 
 log = logging.getLogger(__name__)
 
@@ -128,6 +131,13 @@ class HerdrWindowRaiser:
             log.info("no window found for a herdr client")
             return
         await self._hyprland.focus(address)
+
+
+def linux_raiser(config: RaiseConfig) -> Raiser:
+    """`herdr-window` (or nothing configured) focuses the herdr client's window on Hyprland."""
+    if config.enabled and config.linux.strip() in ("", HERDR_WINDOW):
+        return HerdrWindowRaiser()
+    return raiser_from_config(config, platform="linux")
 
 
 class WindowFocuser:

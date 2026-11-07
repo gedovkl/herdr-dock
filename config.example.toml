@@ -128,3 +128,10 @@ widget = "timer"               # stopwatch: press to start, press again to stop
 # label = "Lock"
 # symbol = "⏻"
 # run = "omarchy-lock-screen"
+
+# Elgato plugin. On this machine it runs in OpenDeck (scripts/install-opendeck-plugin.sh),
+# with a Tacto phone deck: 3x2 keys and no folder back key.
+[elgato]
+columns = 3
+rows = 2
+folder = false

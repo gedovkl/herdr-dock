@@ -7,6 +7,7 @@ agents blink. Press a key to switch herdr to that agent and bring its terminal w
 - **Linux:** a standalone daemon that drives the M18 directly through the StreamDock Device SDK
 - **VSD Craft (macOS):** a plugin for the official StreamDock app
 - **Elgato (macOS):** a plugin for the Elgato Stream Deck app, which also reaches Stream Deck Mobile
+- **OpenDeck (Linux):** the Elgato plugin in OpenDeck, with a phone as the deck through Tacto
 
 All three use the same `herdr_core` package, and the two plugins share `streamdock_plugin/`. See [DESIGN.md](DESIGN.md) for the architecture,
 engineering rules (SOLID, ≥ 80 % test coverage) and milestones, and [CHANGELOG.md](CHANGELOG.md)
@@ -382,6 +383,45 @@ the herdr lookup and all other settings are the same as for VSD (see above). Log
 `tail -f ~/Library/Logs/herdr-dock/elgato-plugin.log`; `pkill -f herdr-dock-plugin` restarts the plugin
 (this also stops the VSD plugin if it is running).
 
+## Setup with OpenDeck (Linux, phone as the deck)
+
+[OpenDeck](https://github.com/nekename/OpenDeck) runs Stream Deck plugins on Linux, so the Elgato
+plugin runs there too, straight from this checkout's `.venv` (no PyInstaller build). With the
+[Tacto](https://tacto.live) app and its **Tacto Connect** OpenDeck plugin, an Android phone becomes
+the deck. Tested with OpenDeck 2.14.1 (Arch `extra`) and Tacto Free (3 × 2 keys) on GrapheneOS
+(Tacto installed with Aurora Store).
+
+```bash
+sudo pacman -S opendeck jq                # start OpenDeck once so it creates its folders
+scripts/setup.sh                          # if there's no .venv yet
+scripts/install-opendeck-plugin.sh        # into ~/.config/opendeck/plugins (OPENDECK_PLUGINS_DIR overrides)
+```
+
+Restart OpenDeck (quit it fully, then start it again: it doesn't relaunch a stopped plugin), select
+the phone and drag **Herdr Agent** (category herdr) onto its keys. Set the size in
+`~/.config/herdr-dock/config.toml`; OpenDeck has no folder back key:
+
+```toml
+[elgato]
+columns = 3     # the plugin logs the phone's real size: "device …: is 3x2, but …"
+rows = 2
+folder = false
+```
+
+**Agent number.** Click a Herdr Agent key in OpenDeck to set **Agent number**: that key then
+always shows agent N (herdr-dock's order) wherever it sits, which helps when other actions share
+the deck. Empty means the key's position decides, as before. A number beyond the deck is ignored
+(the log says so).
+
+Raising uses the same Hyprland lookup as the Linux daemon (`[raise] linux`). Logs:
+`~/.local/state/herdr-dock/elgato-plugin.log` and
+`~/.local/share/opendeck/logs/plugins/com.herdr.dock.sdPlugin.log`. Rerun the install script after
+pulling changes to the manifest or `pi/`; Python changes only need an OpenDeck restart.
+`scripts/install-opendeck-plugin.sh --uninstall` removes it.
+
+Known with Tacto: the phone offers only relay ICE candidates, so presses travel through
+Cloudflare's TURN servers even on the same Wi-Fi (a `ufw` rule for local UDP didn't change that).
+
 ## Development
 
 ```bash
@@ -414,4 +454,5 @@ Run from anywhere; they resolve the repo root themselves. Works with macOS's bas
 | `scripts/install-vsd-plugin.sh` | Copy the plugin into the StreamDock app's plugin folder (`STREAMDOCK_PLUGINS_DIR` overrides it), then restart the app |
 | `scripts/build-elgato-plugin.sh` | Build the Elgato plugin, `dist/elgato/com.herdr.dock.sdPlugin`, with PyInstaller (macOS) |
 | `scripts/install-elgato-plugin.sh` | Copy it into the Elgato Stream Deck app's plugin folder (`ELGATO_PLUGINS_DIR` overrides it), then restart the app |
+| `scripts/install-opendeck-plugin.sh [--uninstall]` | Install the Elgato plugin into OpenDeck on Linux, running from `.venv` (`OPENDECK_PLUGINS_DIR` overrides the folder) |
 

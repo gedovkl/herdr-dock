@@ -6,7 +6,8 @@ import argparse
 import asyncio
 import logging
 import os
-from collections.abc import Callable, Sequence
+import sys
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -21,7 +22,7 @@ from streamdock_plugin.grid import Grid
 from streamdock_plugin.herdr_path import herdr_status_reader
 from streamdock_plugin.lifecycle import VisibilityLifecycle
 from streamdock_plugin.plugin import HerdrPlugin
-from streamdock_plugin.raiser import macos_raiser
+from streamdock_plugin.raiser import plugin_raiser
 from streamdock_plugin.surface import StreamDockSurface
 from streamdock_plugin.watch import FileWatcher
 from streamdock_plugin.websocket import WebSocketTransport
@@ -97,7 +98,7 @@ async def run_plugin(
     stack = build_herdr_stack(
         config,
         surface,
-        macos_raiser(config.raise_window),
+        plugin_raiser(config.raise_window),
         socket,
         layout=layout,
         key_count=spec.key_count,
@@ -109,7 +110,14 @@ async def run_plugin(
         lambda: stop_herdr(stack.presenter, stack.session),
     )
     plugin = HerdrPlugin(
-        surface, lifecycle, stack.presenter, stack.session, layout, spec.grid, spec.action_uuid
+        surface,
+        lifecycle,
+        stack.presenter,
+        stack.session,
+        layout,
+        spec.grid,
+        spec.action_uuid,
+        key_count=spec.key_count,
     )
     holder.append(plugin)
     transport.start()
@@ -141,8 +149,18 @@ def _watch_grid(reload: GridReload | None, plugin: HerdrPlugin) -> asyncio.Task[
     return asyncio.create_task(watcher.run(), name="config-watch")
 
 
-def default_log_file(name: str) -> Path:
-    return Path.home() / "Library" / "Logs" / "herdr-dock" / name
+def default_log_file(
+    name: str,
+    platform: str = sys.platform,
+    env: Mapping[str, str] = os.environ,
+    home: Path | None = None,
+) -> Path:
+    """`~/Library/Logs/herdr-dock` on macOS; `$XDG_STATE_HOME/herdr-dock` elsewhere (OpenDeck)."""
+    home = home or Path.home()
+    if platform == "darwin":
+        return home / "Library" / "Logs" / "herdr-dock" / name
+    state = env.get("XDG_STATE_HOME") or str(home / ".local" / "state")
+    return Path(state) / "herdr-dock" / name
 
 
 SpecFactory = Callable[[PluginArgs], PluginSpec]

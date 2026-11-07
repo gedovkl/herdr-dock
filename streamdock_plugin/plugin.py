@@ -42,6 +42,8 @@ class HerdrPlugin:
         layout: KeyLayout,
         grid: Grid,
         action_uuid: str,
+        *,
+        key_count: int | None = None,
     ) -> None:
         self._surface = surface
         self._lifecycle = lifecycle
@@ -50,6 +52,7 @@ class HerdrPlugin:
         self._layout = layout
         self._grid = grid
         self._action_uuid = action_uuid
+        self._key_count = key_count
         self._sizes: dict[str, tuple[int, int]] = {}
         self._device: str | None = None
         self._tasks: set[asyncio.Task[None]] = set()
@@ -92,7 +95,7 @@ class HerdrPlugin:
 
     def _appeared(self, event: Appeared) -> None:
         self._visible[event.context] = event
-        key = self._key(event.action, event.device, event.column, event.row)
+        key = self._key(event.action, event.device, event.column, event.row, event.agent)
         if key is None:
             # A key we don't use (the back key, off the grid): if this context was attached
             # to another key before, it must not keep drawing or keep herdr running.
@@ -105,7 +108,7 @@ class HerdrPlugin:
         self._presenter.invalidate()  # this key has never been drawn
 
     def _released(self, event: KeyReleased) -> None:
-        key = self._key(event.action, event.device, event.column, event.row)
+        key = self._key(event.action, event.device, event.column, event.row, event.agent)
         if key is None:
             return
         log.info("key %s pressed", key + 1)
@@ -119,17 +122,35 @@ class HerdrPlugin:
         except Exception:
             log.exception("press on slot %s failed", index)
 
-    def _key(self, action: str, device: str, column: int, row: int) -> int | None:
-        """The key index for one of our actions on the dock we drive, else None."""
+    def _key(
+        self, action: str, device: str, column: int, row: int, agent: int | None = None
+    ) -> int | None:
+        """The key index for one of our actions on the dock we drive, else None.
+
+        A key with an `agent` setting takes the index that agent is drawn on; without one (or
+        with a number beyond the deck), its position decides.
+        """
         if action != self._action_uuid or not self._allowed(device):
             return None
-        key = self._grid.key_index(column, row)
+        key = self._agent_key(agent) if agent is not None else None
+        if key is None:
+            key = self._grid.key_index(column, row)
         if key is None:
             return None
         if self._layout.is_exit(key):
             self._warn_once("exit", "key 1 is reserved for Exit; the action is ignored there")
             return None
         self._device = device  # only a key we really draw on latches the dock
+        return key
+
+    def _agent_key(self, agent: int) -> int | None:
+        key = agent - 1 + (1 if self._layout.exit_key else 0)
+        if self._key_count is not None and key >= self._key_count:
+            self._warn_once(
+                f"agent-{agent}",
+                f"agent {agent} is beyond this {self._key_count}-key deck; using its position",
+            )
+            return None
         return key
 
     def _allowed(self, device: str) -> bool:

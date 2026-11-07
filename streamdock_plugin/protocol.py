@@ -21,6 +21,8 @@ class Appeared:
     action: str
     column: int
     row: int
+    agent: int | None = None
+    """The key's `agent` setting: always show agent number N (1-based). None: by position."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +37,7 @@ class KeyReleased:
     action: str
     column: int
     row: int
+    agent: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,7 +68,8 @@ def parse_event(raw: str) -> PluginEvent | None:
     if event == "willDisappear":
         context = _text(data, "context")
         return Disappeared(context) if context else None
-    if event in ("willAppear", "keyUp"):
+    if event in ("willAppear", "keyUp", "didReceiveSettings"):
+        # didReceiveSettings carries the key's coordinates too: treat it as a fresh appearance
         return _key_event(event, data)
     if event == "deviceDidConnect":
         return _device_connected(data)
@@ -97,9 +101,20 @@ def _key_event(event: str, data: dict[str, Any]) -> Appeared | KeyReleased | Non
     if column is None or row is None:
         return None
     action = _text(data, "action")
-    if event == "willAppear":
-        return Appeared(context, device, action, column, row)
-    return KeyReleased(context, device, action, column, row)
+    agent = _agent_setting(payload.get("settings") if isinstance(payload, dict) else None)
+    if event == "keyUp":
+        return KeyReleased(context, device, action, column, row, agent)
+    return Appeared(context, device, action, column, row, agent)
+
+
+def _agent_setting(settings: object) -> int | None:
+    """The `agent` setting as a number >= 1 (the inspector may store it as text), else None."""
+    value = settings.get("agent") if isinstance(settings, dict) else None
+    if isinstance(value, str) and value.strip().isdigit():
+        value = int(value.strip())
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 1:
+        return value
+    return None
 
 
 def _device_connected(data: dict[str, Any]) -> DeviceConnected | None:
